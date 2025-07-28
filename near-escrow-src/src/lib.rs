@@ -7,7 +7,7 @@ use near_sdk::ext_contract;
 use near_sdk::serde_json;
 use sha2::{Digest, Sha256};
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize)]
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
 #[serde(crate = "near_sdk::serde")]
 pub struct LockParams {
     pub lock_id: String,
@@ -110,11 +110,16 @@ impl EscrowSrc {
     /// Claim with preimage (restricted to receiver)
     pub fn claim(&mut self, lock_id: String, preimage: Vec<u8>) {
         let lock = self.locks.get(&lock_id).expect("No lock");
-        let mut hasher = Sha256::new();
-        hasher.update(&preimage);
-        let hash = hasher.finalize().to_vec();
+        let hash = env::sha256(&preimage);
         if hash != lock.secret_hash {
-            env::panic_str("Invalid preimage");
+            let preimage_hex = hex::encode(&preimage);
+            let hash_hex = hex::encode(&hash);
+            let expected_hash_hex = hex::encode(&lock.secret_hash);
+            let error_msg = format!(
+                "Invalid preimage: preimage={}, computed_hash={}, expected_hash={}",
+                preimage_hex, hash_hex, expected_hash_hex
+            );
+            env::panic_str(&error_msg);
         }
         if env::block_timestamp() / 1_000_000_000 >= lock.timelock {
             env::panic_str("Expired");
