@@ -68,8 +68,9 @@ impl EscrowSrc {
     }
 
     /// Callback after ft_transfer_call from token contract
-    #[private]
-    pub fn on_ft_transfer_call(&mut self, sender_id: AccountId, amount: U128, msg: String) -> PromiseOrValue<U128> {
+    #[payable]
+    pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> PromiseOrValue<U128> {
+        env::log_str(&format!("Received msg: {}", msg));
         // Ensure called by token contract
         let token = env::predecessor_account_id();
         // Parse msg for lock_id, secret_hash, timelock, receiver_id
