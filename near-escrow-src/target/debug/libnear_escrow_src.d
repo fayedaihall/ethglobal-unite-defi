@@ -1,0 +1,1 @@
+/Users/fayehall/ethglobal-unite-defi/fusionplus-near-extension/near-escrow-src/target/debug/libnear_escrow_src.dylib: /Users/fayehall/ethglobal-unite-defi/fusionplus-near-extension/near-escrow-src/src/lib.rs

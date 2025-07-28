@@ -1,0 +1,1 @@
+/Users/fayehall/ethglobal-unite-defi/fusionplus-near-extension/near-escrow-src/target/wasm32-unknown-unknown/release/near_escrow_src.wasm: /Users/fayehall/ethglobal-unite-defi/fusionplus-near-extension/near-escrow-src/src/lib.rs /Users/fayehall/ethglobal-unite-defi/fusionplus-near-extension/near-escrow-src/target/near/near_escrow_src_abi.zst
