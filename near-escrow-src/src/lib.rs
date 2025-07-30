@@ -1,159 +1,183 @@
 use near_sdk::borsh::{self, BorshDeserialize, BorshSerialize};
 use near_sdk::store::LookupMap;
-use near_sdk::{env, near_bindgen, AccountId, Gas, Promise, PromiseOrValue, NearToken};
-use near_sdk::serde::{Deserialize, Serialize};
 use near_sdk::json_types::U128;
-use near_sdk::ext_contract;
-use near_sdk::serde_json;
-use sha2::{Digest, Sha256};
+use near_sdk::serde::{Deserialize, Serialize};
+use near_sdk::{near_bindgen, AccountId, Promise, env, log, BorshStorageKey, Gas, NearToken};
+use schemars::JsonSchema;
 
-#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, Clone)]
+// Newtype to make AccountId compatible with JsonSchema
+#[derive(BorshSerialize, BorshDeserialize, Serialize, Deserialize, Clone, JsonSchema, PartialEq)]
+#[serde(transparent)]
+pub struct JsonAccountId(String);
+
+impl JsonAccountId {
+    pub fn new(account_id: AccountId) -> Self {
+        JsonAccountId(account_id.to_string())
+    }
+
+    pub fn inner(&self) -> AccountId {
+        self.0.parse().expect("Invalid AccountId")
+    }
+
+    pub fn into_inner(self) -> AccountId {
+        self.0.parse().expect("Invalid AccountId")
+    }
+}
+
+#[derive(BorshDeserialize, BorshSerialize, Serialize, Deserialize, JsonSchema, Clone)]
 #[serde(crate = "near_sdk::serde")]
-pub struct LockParams {
-    pub lock_id: String,
-    pub secret_hash: Vec<u8>,
-    pub timelock: u64,
-    pub receiver_id: AccountId,
-    pub amount: U128,
+pub struct Escrow {
+    sender: JsonAccountId,
+    token: JsonAccountId,
+    amount: u128,
+    hashlock: [u8; 32],
+    timelock_exclusive: u64,
+    timelock_recovery: u64,
+    withdrawn: bool,
+    resolver: Option<JsonAccountId>,
+}
+
+#[derive(BorshStorageKey, BorshSerialize)]
+enum StorageKey {
+    Escrows,
 }
 
 #[near_bindgen]
 #[derive(BorshDeserialize, BorshSerialize)]
-pub struct EscrowSrc {
-    locks: LookupMap<String, Lock>,
+pub struct Contract {
+    escrows: LookupMap<u64, Escrow>,
+    next_id: u64,
 }
 
-#[derive(BorshDeserialize, BorshSerialize)]
-pub struct Lock {
-    secret_hash: Vec<u8>,  // SHA-256 hash
-    amount: u128,         // FT amount in token's denomination
-    token: AccountId,     // Token contract
-    maker: AccountId,     // User who locked
-    receiver: AccountId,  // Resolver who can claim
-    timelock: u64,        // Seconds since Unix epoch
-}
-
-impl Default for EscrowSrc {
+impl Default for Contract {
     fn default() -> Self {
-        Self { locks: LookupMap::new(b"l".to_vec()) }
+        Self {
+            escrows: LookupMap::new(StorageKey::Escrows),
+            next_id: 0,
+        }
     }
+}
+
+#[derive(Serialize, Deserialize)]
+#[serde(crate = "near_sdk::serde")]
+pub struct LockMsg {
+    hashlock: String, // hex string
+    timelock: u64, // seconds
+    dest_chain: String,
+    dest_user: String,
+    min_return: String,
+    output_token: String,
+    resolver_id: Option<JsonAccountId>,
 }
 
 #[near_bindgen]
-impl EscrowSrc {
-    /// User calls to validate lock params (called via ft_transfer_call)
-    pub fn lock(&mut self, lock_id: String, secret_hash: Vec<u8>, timelock: u64, receiver_id: AccountId) {
-        // Validate inputs
-        if lock_id.is_empty() {
-            env::panic_str("Lock ID cannot be empty");
-        }
-        if self.locks.get(&lock_id).is_some() {
-            env::panic_str("Lock ID already exists");
-        }
-        if secret_hash.len() != 32 {
-            env::panic_str("Secret hash must be 32 bytes (SHA-256)");
-        }
-        let current_time = env::block_timestamp() / 1_000_000_000;  // Convert ns to seconds
-        if timelock <= current_time {
-            env::panic_str("Timelock must be in the future");
-        }
-        if !env::is_valid_account_id(receiver_id.as_bytes()) {
-            env::panic_str("Invalid receiver ID");
-        }
-        // No deposit expected; transfer handled by ft_transfer_call
-        if env::attached_deposit() != NearToken::from_yoctonear(0) {
-            env::panic_str("No deposit expected for lock; use ft_transfer_call");
-        }
-        // Parameters validated; actual lock in on_ft_transfer_call
+impl Contract {
+    #[init]
+    pub fn new() -> Self {
+        Self::default()
     }
 
-    /// Callback after ft_transfer_call from token contract
     #[payable]
-    pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> PromiseOrValue<U128> {
-        env::log_str(&format!("Received msg: {}", msg));
-        // Ensure called by token contract
+    pub fn ft_on_transfer(&mut self, sender_id: AccountId, amount: U128, msg: String) -> U128 {
         let token = env::predecessor_account_id();
-        // Parse msg for lock_id, secret_hash, timelock, receiver_id
-        let params: LockParams = serde_json::from_str(&msg).expect("Invalid JSON in msg");
-        // Re-validate params
-        if params.lock_id.is_empty() {
-            env::panic_str("Lock ID cannot be empty");
-        }
-        if self.locks.get(&params.lock_id).is_some() {
-            env::panic_str("Lock ID already exists");
-        }
-        if params.secret_hash.len() != 32 {
-            env::panic_str("Secret hash must be 32 bytes");
-        }
-        if params.timelock <= env::block_timestamp() / 1_000_000_000 {
-            env::panic_str("Timelock must be in the future");
-        }
-        if !env::is_valid_account_id(params.receiver_id.as_bytes()) {
-            env::panic_str("Invalid receiver ID");
-        }
-        if params.amount.0 != amount.0 {
-            env::panic_str("Amount mismatch");
-        }
-        // Store lock
-        self.locks.insert(params.lock_id, Lock {
-            secret_hash: params.secret_hash,
+        let params: LockMsg = near_sdk::serde_json::from_str(&msg).unwrap();
+        let hashlock_vec = hex::decode(params.hashlock).unwrap();
+        let hashlock: [u8; 32] = hashlock_vec.try_into().unwrap();
+        let id = self.next_id;
+        self.next_id += 1;
+        let current = env::block_timestamp() / 1_000_000_000;
+        self.escrows.insert(id, Escrow {
+            sender: JsonAccountId::new(sender_id),
+            token: JsonAccountId::new(token),
             amount: amount.0,
-            token,
-            maker: sender_id,
-            receiver: params.receiver_id,
-            timelock: params.timelock,
+            hashlock,
+            timelock_exclusive: current + params.timelock / 2,
+            timelock_recovery: current + params.timelock,
+            withdrawn: false,
+            resolver: params.resolver_id,
         });
-        // Return 0 to indicate successful transfer (NEP-141)
-        PromiseOrValue::Value(U128(0))
+        log!("Escrow created: {}", id);
+        U128(0)
     }
 
-    /// Claim with preimage (restricted to receiver)
-    pub fn claim(&mut self, lock_id: String, preimage: Vec<u8>) {
-        let lock = self.locks.get(&lock_id).expect("No lock");
-        let hash = env::sha256(&preimage);
-        if hash != lock.secret_hash {
-            let preimage_hex = hex::encode(&preimage);
-            let hash_hex = hex::encode(&hash);
-            let expected_hash_hex = hex::encode(&lock.secret_hash);
-            let error_msg = format!(
-                "Invalid preimage: preimage={}, computed_hash={}, expected_hash={}",
-                preimage_hex, hash_hex, expected_hash_hex
-            );
-            env::panic_str(&error_msg);
+    pub fn register_resolver(&mut self, id: u64) {
+        let escrow = self.escrows.get(&id).expect("Escrow not found").clone();
+        if escrow.resolver.is_none() {
+            let mut updated_escrow = escrow;
+            updated_escrow.resolver = Some(JsonAccountId::new(env::predecessor_account_id()));
+            self.escrows.insert(id, updated_escrow);
         }
-        if env::block_timestamp() / 1_000_000_000 >= lock.timelock {
-            env::panic_str("Expired");
-        }
-        if env::predecessor_account_id() != lock.receiver {
-            env::panic_str("Only receiver can claim");
-        }
-        // Transfer to receiver
-        ext_ft::ext(lock.token.clone())
-            .with_attached_deposit(NearToken::from_yoctonear(1))
-            .with_static_gas(Gas::from_tgas(5))
-            .ft_transfer(lock.receiver.clone(), U128(lock.amount), None);
-        self.locks.remove(&lock_id);
     }
 
-    /// Refund to maker after timelock
-    pub fn refund(&mut self, lock_id: String) {
-        let lock = self.locks.get(&lock_id).expect("No lock");
-        if env::block_timestamp() / 1_000_000_000 < lock.timelock {
-            env::panic_str("Not expired");
+    pub fn withdraw(&mut self, id: u64, preimage: String) {
+        let escrow = self.escrows.get(&id).expect("Escrow not found").clone();
+        let hash = env::sha256(preimage.as_bytes());
+        if hash != escrow.hashlock.to_vec() {
+            panic!("Invalid preimage");
         }
-        if env::predecessor_account_id() != lock.maker {
-            env::panic_str("Only maker");
+        if escrow.withdrawn {
+            panic!("Withdrawn");
         }
-        ext_ft::ext(lock.token.clone())
-            .with_attached_deposit(NearToken::from_yoctonear(1))
-            .with_static_gas(Gas::from_tgas(5))
-            .ft_transfer(lock.maker.clone(), U128(lock.amount), None);
-        self.locks.remove(&lock_id);
+        let current = env::block_timestamp() / 1_000_000_000;
+        if current >= escrow.timelock_recovery {
+            panic!("Expired");
+        }
+        if current < escrow.timelock_exclusive {
+            if let Some(resolver) = &escrow.resolver {
+                if JsonAccountId::new(env::predecessor_account_id()) != *resolver {
+                    panic!("Only resolver during exclusive period");
+                }
+            } else {
+                // No resolver set, allow withdrawal from anyone if we're past half the timelock
+                panic!("No resolver set - cannot withdraw during exclusive period");
+            }
+        }
+        let mut updated_escrow = escrow.clone();
+        updated_escrow.withdrawn = true;
+        self.escrows.insert(id, updated_escrow);
+        let resolver = match escrow.resolver {
+            Some(resolver) => resolver.into_inner(),
+            None => escrow.sender.into_inner(), // Fallback to sender if no resolver
+        };
+        Promise::new(escrow.token.into_inner()).function_call(
+            "ft_transfer".into(),
+            near_sdk::serde_json::json!({
+                "receiver_id": resolver,
+                "amount": U128(escrow.amount)
+            })
+            .to_string()
+            .into_bytes(),
+            NearToken::from_yoctonear(1),
+            Gas::from_tgas(5),
+        );
     }
-}
 
-#[ext_contract(ext_ft)]
-pub trait FungibleToken {
-    fn ft_transfer(receiver_id: AccountId, amount: U128, memo: Option<String>);
-    fn ft_transfer_call(receiver_id: AccountId, amount: U128, msg: String) -> Promise;
+    pub fn refund(&mut self, id: u64) {
+        let escrow = self.escrows.get(&id).expect("Escrow not found").clone();
+        if escrow.withdrawn {
+            panic!("Withdrawn");
+        }
+        let current = env::block_timestamp() / 1_000_000_000;
+        if current < escrow.timelock_recovery {
+            panic!("Not expired");
+        }
+        let mut updated_escrow = escrow.clone();
+        updated_escrow.withdrawn = true;
+        self.escrows.insert(id, updated_escrow);
+        Promise::new(escrow.token.into_inner()).function_call(
+            "ft_transfer".into(),
+            near_sdk::serde_json::json!({
+                "receiver_id": escrow.sender.into_inner(),
+                "amount": U128(escrow.amount)
+            })
+            .to_string()
+            .into_bytes(),
+            NearToken::from_yoctonear(1),
+            Gas::from_tgas(5),
+        );
+    }
+
+    pub fn get_escrow(&self, id: u64) -> Option<Escrow> {
+        self.escrows.get(&id).cloned()
+    }
 }
