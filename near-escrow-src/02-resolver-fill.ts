@@ -8,9 +8,13 @@ type NearPrivateKey = `ed25519:${string}`;
 async function resolverFill(
   escrowId: number,
   fillAmount: string,
-  hashlock: string,
+  secret: string,
   userEthAddress: string
 ) {
+  const envFile =
+    process.env.NODE_ENV === "production" ? ".env.mainnet" : ".env.testnet";
+  dotenv.config({ path: envFile });
+
   if (!process.env.RESOLVER_NEAR_PRIVATE_KEY) {
     throw new Error("RESOLVER_NEAR_PRIVATE_KEY is not set in .env");
   }
@@ -112,10 +116,11 @@ async function resolverFill(
     /* HTLC ABI here */
     // Add your HTLC contract ABI methods here
     "function createLock(bytes32,address,address,uint256,bytes32,uint256) returns(bool)",
-    "function claim(bytes32,string) returns(bool)",
+    "function withdraw(bytes32,string) returns(bool)",
     "function refund(bytes32) returns(bool)",
+    "function locks(bytes32) view returns (address, address, address, uint256, bytes32, uint256, bool)",
   ];
-  const htlcAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+  const htlcAddress = ethers.getAddress(process.env.HTLC_ETH_ADDRESS!);
   const usdcAddress = ethers.getAddress(process.env.USDC_ETH_ADDRESS!); // Validate and normalize address
 
   console.log(`HTLC contract address: ${htlcAddress}`);
@@ -128,17 +133,22 @@ async function resolverFill(
     wallet
   );
 
-  console.log(`Attempting to approve ${fillAmount} USDC for HTLC at ${htlcAddress}`);
-  
+  console.log(
+    `Attempting to approve ${fillAmount} USDC for HTLC at ${htlcAddress}`
+  );
+
   // Get current nonce to avoid nonce conflicts
   const currentNonce = await wallet.getNonce();
   console.log(`Using nonce for approval: ${currentNonce}`);
-  
-  const approveTx = await usdc.approve(htlcAddress, fillAmount, { nonce: currentNonce });
+
+  const approveTx = await usdc.approve(htlcAddress, fillAmount, {
+    nonce: currentNonce,
+  });
   await approveTx.wait();
   console.log(`USDC approval completed. Tx: ${approveTx.hash}`);
-  
+
   const id = ethers.keccak256(ethers.toUtf8Bytes(escrowId.toString())); // Unique ID
+  const hashlock = ethers.sha256(Buffer.from(secret, "hex")); // Use SHA256 to match NEAR contract
   const timelock = 7200; // 2 hours
 
   // Validate user Ethereum address
@@ -150,13 +160,13 @@ async function resolverFill(
   // Use the next sequential nonce for the createLock transaction
   const nextNonce = currentNonce + 1;
   console.log(`Creating HTLC lock with nonce: ${nextNonce}`);
-  
+
   const createTx = await htlc.createLock(
     id,
     validUserAddress,
     usdcAddress,
     fillAmount,
-    "0x" + hashlock,
+    hashlock,
     timelock,
     { nonce: nextNonce }
   );
@@ -165,12 +175,76 @@ async function resolverFill(
     "Lock created on Eth. Tx (token transfer to escrow):",
     createTx.hash
   );
+
+  // Log detailed lock information
+  console.log("\n🔒 Ethereum HTLC Lock Details:");
+  console.log(`Lock ID: ${id}`);
+  console.log(`Recipient: ${validUserAddress}`);
+  console.log(`Token: ${usdcAddress}`);
+  console.log(`Amount: ${fillAmount} (${parseInt(fillAmount) / 1000000} USDC)`);
+  console.log(`Hashlock: ${hashlock}`);
+  console.log(`Timelock: ${timelock} seconds (${timelock / 3600} hours)`);
+  console.log(`Transaction Hash: ${createTx.hash}`);
+  console.log(`Block Number: ${createTx.blockNumber}`);
+  console.log(`Gas Used: ${createTx.gasUsed?.toString() || "N/A"}`);
+  console.log(`Gas Price: ${createTx.gasPrice?.toString() || "N/A"}`);
+
+  // Calculate lock expiry time
+  const currentBlock = await provider.getBlock(createTx.blockNumber!);
+  const lockExpiryTime = new Date((currentBlock!.timestamp + timelock) * 1000);
+  console.log(`Lock Expiry: ${lockExpiryTime.toISOString()}`);
+  console.log(`Current Time: ${new Date().toISOString()}`);
+  console.log(
+    `Time Remaining: ${Math.floor(
+      (lockExpiryTime.getTime() - Date.now()) / 1000
+    )} seconds`
+  );
 }
 
-// Example call (get hashlock from query, assume from auction service)
-resolverFill(
-  0,
-  "1000000",
-  "652c7dc687d98c9889304ed2e408c74b611e86a40caa51c4b43f1dd5913c5cd0",
-  "0x617206eb31554a759eDec3d644b88C6892a0343D"
-);
+// Get command line arguments
+const escrowId = Number(process.argv[2]);
+const fillAmount = process.argv[3];
+const secret = process.argv[4];
+const userEthAddress = process.argv[5];
+
+if (!escrowId || isNaN(escrowId)) {
+  console.error(
+    "Usage: ts-node 02-resolver-fill.ts <escrowId> <fillAmount> <secret> <userEthAddress>"
+  );
+  console.error(
+    "Example: ts-node 02-resolver-fill.ts 0 1000000 652c7dc687d98c9889304ed2e408c74b611e86a40caa51c4b43f1dd5913c5cd0 0x617206eb31554a759eDec3d644b88C6892a0343D"
+  );
+  process.exit(1);
+}
+
+if (!fillAmount) {
+  console.error(
+    "Usage: ts-node 02-resolver-fill.ts <escrowId> <fillAmount> <secret> <userEthAddress>"
+  );
+  console.error(
+    "Example: ts-node 02-resolver-fill.ts 0 1000000 652c7dc687d98c9889304ed2e408c74b611e86a40caa51c4b43f1dd5913c5cd0 0x617206eb31554a759eDec3d644b88C6892a0343D"
+  );
+  process.exit(1);
+}
+
+if (!secret) {
+  console.error(
+    "Usage: ts-node 02-resolver-fill.ts <escrowId> <fillAmount> <secret> <userEthAddress>"
+  );
+  console.error(
+    "Example: ts-node 02-resolver-fill.ts 0 1000000 652c7dc687d98c9889304ed2e408c74b611e86a40caa51c4b43f1dd5913c5cd0 0x617206eb31554a759eDec3d644b88C6892a0343D"
+  );
+  process.exit(1);
+}
+
+if (!userEthAddress) {
+  console.error(
+    "Usage: ts-node 02-resolver-fill.ts <escrowId> <fillAmount> <secret> <userEthAddress>"
+  );
+  console.error(
+    "Example: ts-node 02-resolver-fill.ts 0 1000000 652c7dc687d98c9889304ed2e408c74b611e86a40caa51c4b43f1dd5913c5cd0 0x617206eb31554a759eDec3d644b88C6892a0343D"
+  );
+  process.exit(1);
+}
+
+resolverFill(escrowId, fillAmount, secret, userEthAddress).catch(console.error);

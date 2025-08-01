@@ -1,12 +1,17 @@
 import * as nearAPI from "near-api-js";
 import * as dotenv from "dotenv";
-import { ethers } from "ethers";
+import { ethers, parseUnits } from "ethers";
+import * as crypto from "crypto";
 
 dotenv.config();
 
 type NearPrivateKey = `ed25519:${string}`;
 
-async function createLockOnNear() {
+async function createLockOnNear(amountHuman: string) {
+  const envFile =
+    process.env.NODE_ENV === "production" ? ".env.mainnet" : ".env.testnet";
+  dotenv.config({ path: envFile });
+
   const { Near, keyStores, KeyPair } = nearAPI;
 
   // Validate environment variables
@@ -34,6 +39,19 @@ async function createLockOnNear() {
     throw new Error("USER_NEAR_PRIVATE_KEY must start with 'ed25519:'");
   }
 
+  // Convert amount (USDC: 6 decimals)
+  const decimals = 6;
+  let amount: string;
+  try {
+    amount = parseUnits(amountHuman, decimals).toString();
+    if (parseUnits(amountHuman, decimals) <= 0n) {
+      throw new Error("Amount must be positive");
+    }
+  } catch (error) {
+    throw new Error(`Invalid amount: ${amountHuman}. Must be a valid number.`);
+  }
+  console.log(`Amount (raw): ${amount} (human: ${amountHuman} USDC)`);
+
   const keyStore = new keyStores.InMemoryKeyStore();
   const keyPair = KeyPair.fromString(
     process.env.USER_NEAR_PRIVATE_KEY as NearPrivateKey
@@ -43,16 +61,16 @@ async function createLockOnNear() {
     process.env.USER_NEAR_ACCOUNT_ID,
     keyPair
   );
-  
+
   const config = {
     networkId: process.env.NEAR_NETWORK,
     keyStore,
     nodeUrl: process.env.NEAR_RPC,
-    walletUrl: `https://testnet.mynearwallet.com/`,
-    helperUrl: `https://helper.testnet.near.org`,
-    explorerUrl: `https://testnet.nearblocks.io`,
+    walletUrl: process.env.NEAR_WALLET_URL,
+    helperUrl: process.env.NEAR_HELPER_URL,
+    explorerUrl: process.env.NEAR_EXPLORER_URL,
   };
-  
+
   const near = new Near(config);
   const account = await near.account(process.env.USER_NEAR_ACCOUNT_ID);
 
@@ -64,7 +82,7 @@ async function createLockOnNear() {
       methodName: "storage_deposit",
       args: {
         account_id: process.env.USER_NEAR_ACCOUNT_ID,
-        registration_only: true
+        registration_only: true,
       },
       gas: BigInt("30000000000000"), // 30 TGas
       attachedDeposit: BigInt("1250000000000000000000000"), // 0.00125 NEAR for storage
@@ -86,7 +104,7 @@ async function createLockOnNear() {
     balance = await account.viewFunction({
       contractId: process.env.USDC_NEAR_ADDRESS,
       methodName: "ft_balance_of",
-      args: { account_id: process.env.USER_NEAR_ACCOUNT_ID }
+      args: { account_id: process.env.USER_NEAR_ACCOUNT_ID },
     });
     console.log(`Current USDC balance: ${balance}`);
   } catch (error) {
@@ -102,35 +120,43 @@ async function createLockOnNear() {
         methodName: "mint",
         args: {
           account_id: process.env.USER_NEAR_ACCOUNT_ID,
-          amount: "1000000000" // 1000 USDC (6 decimals)
+          amount: "1000000000", // 1000 USDC (6 decimals)
         },
         gas: BigInt("30000000000000"), // 30 TGas
         attachedDeposit: BigInt("0"),
       });
       console.log("Test tokens minted successfully!");
-      
+
       // Check balance again
       balance = await account.viewFunction({
         contractId: process.env.USDC_NEAR_ADDRESS,
         methodName: "ft_balance_of",
-        args: { account_id: process.env.USER_NEAR_ACCOUNT_ID }
+        args: { account_id: process.env.USER_NEAR_ACCOUNT_ID },
       });
       console.log(`New USDC balance after minting: ${balance}`);
     } catch (error: any) {
-      console.log("Could not mint test tokens (this may be expected if not a test contract):", error.message);
+      console.log(
+        "Could not mint test tokens (this may be expected if not a test contract):",
+        error.message
+      );
     }
   }
 
   // Also register the escrow account as a recipient
-  const escrowAccountId = "escrow-contract.fayefaye2.testnet"; // Use the new deployed escrow contract
-  console.log(`Registering escrow account ${escrowAccountId} with USDC token contract...`);
+  const escrowAccountId = process.env.ESCROW_NEAR_ACCOUNT_ID;
+  if (!escrowAccountId) {
+    throw new Error("ESCROW_NEAR_ACCOUNT_ID is not set in .env");
+  }
+  console.log(
+    `Registering escrow account ${escrowAccountId} with USDC token contract...`
+  );
   try {
     await account.functionCall({
       contractId: process.env.USDC_NEAR_ADDRESS,
       methodName: "storage_deposit",
       args: {
         account_id: escrowAccountId,
-        registration_only: true
+        registration_only: true,
       },
       gas: BigInt("30000000000000"), // 30 TGas
       attachedDeposit: BigInt("1250000000000000000000000"), // 0.00125 NEAR for storage
@@ -145,16 +171,19 @@ async function createLockOnNear() {
     }
   }
 
-  const secret = "mysecret"; // In practice, generate randomly in frontend
-  const hashlock = ethers.sha256(ethers.toUtf8Bytes(secret)).slice(2); // hex without 0x
+  // const secret = "mysecret"; // In practice, generate randomly in frontend
+  const secret = crypto.randomBytes(32);
+  const secretHex = secret.toString("hex");
+  const hashlock = ethers.sha256(secret).slice(2); // hex without 0x
+  console.log(`Generated secret: ${secretHex}`);
+  console.log(`Hashlock: ${hashlock}`);
 
-  const amount = "1"; // 0.000001 USDC (6 decimals) - very small amount for testing
   const msg = JSON.stringify({
     hashlock,
     timelock: 86400, // 1 day in seconds
     dest_chain: "ethereum",
-    dest_user: "0xYourEthAddressHere", // User's Eth address
-    min_return: "1000000", // Min USDC on Eth
+    dest_user: process.env.USER_ETH_ADDRESS, // User's Eth address
+    min_return: amount, // Min USDC on Eth
     output_token: process.env.USDC_ETH_ADDRESS,
   });
 
@@ -162,7 +191,7 @@ async function createLockOnNear() {
     contractId: process.env.USDC_NEAR_ADDRESS,
     methodName: "ft_transfer_call",
     args: {
-      receiver_id: "escrow-contract.fayefaye2.testnet", // Use the new deployed escrow contract
+      receiver_id: escrowAccountId,
       amount,
       msg,
     },
@@ -170,12 +199,46 @@ async function createLockOnNear() {
     attachedDeposit: BigInt("1"), // 1 yoctoNEAR
   });
 
+  // Parse escrow ID from transaction logs
+  let escrowId: number | null = null;
+
+  // Look through all receipts and their logs to find the escrow creation log
+  const receipts = tx.receipts_outcome || [];
+  for (const receipt of receipts) {
+    if (receipt.outcome && receipt.outcome.logs) {
+      for (const log of receipt.outcome.logs) {
+        const match = log.match(/Escrow created: (\d+)/);
+        if (match) {
+          escrowId = Number(match[1]);
+          break;
+        }
+      }
+    }
+    if (escrowId !== null) break;
+  }
+
+  if (escrowId === null) {
+    throw new Error("Could not find escrow ID in transaction logs");
+  }
+
+  console.log(`Escrow ID: ${escrowId}`);
+
   console.log(
     "Lock created on NEAR. Tx hash (token transfer):",
     tx.transaction.hash
   );
-  // For demo, assume escrow_id = 0; in practice, query logs or get_last_id
-  console.log("Escrow ID: 0 (query get_escrow to confirm)");
+  console.log(`Escrow ID: ${escrowId}`);
+
+  return { escrowId, secretHex };
 }
 
-createLockOnNear().catch(console.error);
+// createLockOnNear("0.000001").catch(console.error);
+
+const amountHuman = process.argv[2] || process.env.DEFAULT_SWAP_AMOUNT || "1";
+createLockOnNear(amountHuman)
+  .then(({ escrowId, secretHex }) => {
+    console.log(
+      `Use escrowId: ${escrowId} and secret: ${secretHex} in resolver-complete.ts`
+    );
+  })
+  .catch(console.error);

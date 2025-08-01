@@ -1,5 +1,8 @@
 near-escrow-src/target/
 .env
+.env.*
 node_modules
 *.wasm
 *.log
+artifacts/
+target/

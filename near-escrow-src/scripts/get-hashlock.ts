@@ -1,9 +1,15 @@
 import { Near, providers } from "near-api-js";
 import * as dotenv from "dotenv";
-dotenv.config();
+
+// Load environment variables from the appropriate file
+const envFile =
+  process.env.NODE_ENV === "production" ? ".env.mainnet" : ".env.testnet";
+dotenv.config({ path: envFile });
 
 async function getHashlock(escrowId: number): Promise<string> {
-  const provider = new providers.JsonRpcProvider({ url: process.env.NEAR_RPC! });
+  const provider = new providers.JsonRpcProvider({
+    url: process.env.NEAR_RPC!,
+  });
   const result = await provider.query<any>({
     request_type: "call_function",
     finality: "final",
@@ -19,5 +25,13 @@ async function getHashlock(escrowId: number): Promise<string> {
   return hashlock;
 }
 
-// Example call
-getHashlock(0).catch(console.error);
+// Get command line arguments
+const escrowId = Number(process.argv[2]);
+
+if (!escrowId || isNaN(escrowId)) {
+  console.error("Usage: ts-node get-hashlock.ts <escrowId>");
+  console.error("Example: ts-node get-hashlock.ts 26");
+  process.exit(1);
+}
+
+getHashlock(escrowId).catch(console.error);

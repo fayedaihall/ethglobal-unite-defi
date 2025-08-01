@@ -35,6 +35,8 @@ pub struct Escrow {
     timelock_recovery: u64,
     withdrawn: bool,
     resolver: Option<JsonAccountId>,
+    dest_user: String,
+    output_token: String,
 }
 
 #[derive(BorshStorageKey, BorshSerialize)]
@@ -95,6 +97,8 @@ impl Contract {
             timelock_recovery: current + params.timelock,
             withdrawn: false,
             resolver: params.resolver_id,
+            dest_user: params.dest_user,
+            output_token: params.output_token,
         });
         log!("Escrow created: {}", id);
         U128(0)
@@ -111,7 +115,27 @@ impl Contract {
 
     pub fn withdraw(&mut self, id: u64, preimage: String) {
         let escrow = self.escrows.get(&id).expect("Escrow not found").clone();
-        let hash = env::sha256(preimage.as_bytes());
+        // Try to decode as hex first, if that fails, use as UTF-8 bytes
+        let preimage_bytes = if preimage.len() % 2 == 0 {
+            match hex::decode(&preimage) {
+                Ok(decoded) => {
+                    log!("Using hex decoded preimage: {} bytes", decoded.len());
+                    decoded
+                },
+                Err(e) => {
+                    log!("Hex decode failed: {:?}, using UTF-8", e);
+                    preimage.as_bytes().to_vec()
+                }
+            }
+        } else {
+            log!("Using UTF-8 preimage: {} bytes", preimage.as_bytes().len());
+            preimage.as_bytes().to_vec()
+        };
+        let hash = env::sha256(&preimage_bytes);
+        let expected_hex = escrow.hashlock.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+        let computed_hex = hash.iter().map(|b| format!("{:02x}", b)).collect::<String>();
+        log!("Expected hash: {}", expected_hex);
+        log!("Computed hash: {}", computed_hex);
         if hash != escrow.hashlock.to_vec() {
             panic!("Invalid preimage");
         }

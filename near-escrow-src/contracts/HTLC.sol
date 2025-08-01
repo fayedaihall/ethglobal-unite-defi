@@ -32,7 +32,7 @@ contract HTLC {
 
     function withdraw(bytes32 id, bytes calldata preimage) external {
         Lock storage l = locks[id];
-        require(sha256(preimage) == l.hashlock, "Invalid preimage");
+        require(keccak256(preimage) == l.hashlock, "Invalid preimage");
         require(block.timestamp < l.timelock, "Expired");
         require(!l.withdrawn, "Withdrawn");
         l.withdrawn = true;
@@ -48,4 +48,4 @@ contract HTLC {
         IERC20(l.token).transfer(l.sender, l.amount);
         emit Refunded(id);
     }
-} 
+}
