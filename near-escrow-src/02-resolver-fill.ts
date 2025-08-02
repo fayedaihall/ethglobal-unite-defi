@@ -55,8 +55,7 @@ async function resolverFill(
   const near = new Near(config);
   const nearAccount = await near.account(process.env.RESOLVER_NEAR_ACCOUNT_ID!);
 
-  // Use escrow-contract.fayefaye2.testnet as the escrow contract since we deployed it there
-  const escrowContractId = "escrow-contract.fayefaye2.testnet";
+  const escrowContractId = process.env.ESCROW_NEAR_ACCOUNT_ID!;
   console.log(`Attempting to call escrow contract at: ${escrowContractId}`);
 
   // First, let's check if the escrow contract exists
