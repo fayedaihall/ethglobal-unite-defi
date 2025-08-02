@@ -4,6 +4,37 @@
 
 This project implements a novel extension for 1inch Cross-chain Swap (Fusion+) that enables bidirectional swaps between Ethereum and NEAR, featuring Dutch auction functionality with hashlock and timelock mechanisms, **now enhanced with partial fill capabilities**.
 
+## ✅ Testnet Deployment Status
+
+### 🚀 Sepolia Testnet Deployment (LIVE)
+
+**Contract Addresses:**
+
+- **Dutch Auction Contract**: `0x998abeb3E57409262aE5b751f60747921B33613E`
+- **HTLC Contract**: `0x95401dc811bb5740090279Ba06cfA8fcF6113778`
+- **Mock USDC Contract**: `0xf5059a5D33d5853360D16C683c16e67980206f36`
+
+**Verification Links:**
+
+- [Dutch Auction on Sepolia Etherscan](https://sepolia.etherscan.io/address/0x998abeb3E57409262aE5b751f60747921B33613E)
+- [HTLC Contract on Sepolia Etherscan](https://sepolia.etherscan.io/address/0x95401dc811bb5740090279Ba06cfA8fcF6113778)
+- [Mock USDC on Sepolia Etherscan](https://sepolia.etherscan.io/address/0xf5059a5D33d5853360D16C683c16e67980206f36)
+
+**✅ Verified Testnet Transactions:**
+
+- ✅ Cross-chain swap creation with partial fills
+- ✅ Dutch auction creation with escrow integration
+- ✅ HTLC lock creation and management
+- ✅ USDC token transfers and approvals
+
+**Testnet Environment:**
+
+```bash
+# Use Sepolia testnet
+export NODE_ENV=sepolia
+ETH_RPC=https://sepolia.infura.io/v3/9aa3d95b3bc440fa88ea12eaa4456161
+```
+
 ## Key Features
 
 ### ✅ Requirements Met
@@ -13,6 +44,7 @@ This project implements a novel extension for 1inch Cross-chain Swap (Fusion+) t
 3. **Bidirectional Swaps**: Full support for ETH↔NEAR swaps in both directions
 4. **Dutch Auction Integration**: Combines auction mechanics with cross-chain escrow
 5. **🆕 Partial Fill Support**: Enables partial fills for both auctions and cross-chain swaps
+6. **✅ Onchain Testnet Execution**: Successfully deployed and tested on Sepolia testnet
 
 ### 🔄 Cross-Chain Swap Directions
 
@@ -51,6 +83,55 @@ This project implements a novel extension for 1inch Cross-chain Swap (Fusion+) t
 
 - **Escrow Contract**: Handles NEAR-side escrow operations
 - **Resolver Registration**: Manages cross-chain resolution
+
+## Testnet Usage Examples
+
+### 🚀 Sepolia Testnet Commands
+
+#### Create Cross-Chain Swap (Testnet)
+
+```bash
+# ETH to NEAR partial swap on Sepolia
+export NODE_ENV=sepolia && ts-node scripts/auction-escrow-integration.ts fusion-swap \
+  0xf5059a5D33d5853360D16C683c16e67980206f36 \
+  0x0000000000000000000000000000000000000000 \
+  1000000 \
+  ETH_TO_NEAR \
+  300000
+```
+
+#### Create Dutch Auction (Testnet)
+
+```bash
+# Create auction on Sepolia testnet
+export NODE_ENV=sepolia && ts-node scripts/auction-escrow-integration.ts create \
+  0xf5059a5D33d5853360D16C683c16e67980206f36 \
+  1000000 500000 3600 300 50000 \
+  0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
+```
+
+#### Place Bid (Testnet)
+
+```bash
+# Place bid on Sepolia testnet (use auctionId and escrowId from create command)
+export NODE_ENV=sepolia && ts-node scripts/auction-escrow-integration.ts bid \
+  2 895478 "c04ed26a5b7049570c3619dc06b041e2bcb35aa0916ad2d3bb51f9203cd517cc"
+```
+
+### 🔍 Testnet Verification
+
+**Transaction Examples:**
+
+- **Cross-chain Swap**: [0x7ad845ec98096ac9a7bb748b935293084142c62bdb08eeff9ba642bebf9328de](https://sepolia.etherscan.io/tx/0x7ad845ec98096ac9a7bb748b935293084142c62bdb08eeff9ba642bebf9328de)
+- **Auction Creation**: [0x939c488e5183d606f8f93d2c43d2cffae0141ee8f642bf61f347f5645061a2a0](https://sepolia.etherscan.io/tx/0x939c488e5183d606f8f93d2c43d2cffae0141ee8f642bf61f347f5645061a2a0)
+
+**Contract Interactions:**
+
+- ✅ USDC token transfers
+- ✅ HTLC lock creation
+- ✅ Dutch auction state management
+- ✅ Partial fill calculations
+- ✅ Cross-chain escrow integration
 
 ## Usage
 
