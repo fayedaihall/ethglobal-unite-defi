@@ -1,9 +1,9 @@
 {
   "network": "unknown",
-  "dutchAuctionAddress": "0x998abeb3E57409262aE5b751f60747921B33613E",
-  "htlcContractAddress": "0x36C02dA8a0983159322a80FFE9F24b1acfF8B570",
-  "usdcTokenAddress": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
+  "shadeAgentSolverAddress": "0x4c5859f0F772848b2D91F1D83E2Fe57935348029",
+  "htlcContractAddress": "0x95401dc811bb5740090279Ba06cfA8fcF6113778",
+  "usdcTokenAddress": "0xf5059a5D33d5853360D16C683c16e67980206f36",
   "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "blockNumber": 39,
-  "timestamp": "2025-08-02T04:14:44.988Z"
+  "blockNumber": 49,
+  "timestamp": "2025-08-02T04:28:51.388Z"
 }

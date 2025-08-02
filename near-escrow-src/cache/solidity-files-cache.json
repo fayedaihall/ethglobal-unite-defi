@@ -2,8 +2,8 @@
   "_format": "hh-sol-cache-2",
   "files": {
     "/Users/fayehall/ethglobal-unite-defi/near-escrow-src/contracts/DutchAuction.sol": {
-      "lastModificationDate": 1754069506114,
-      "contentHash": "5464c41d3fa581b9e82c909fd80fb1a0",
+      "lastModificationDate": 1754107938891,
+      "contentHash": "7b489266c78873c01749344dbfdc0bcd",
       "sourceName": "contracts/DutchAuction.sol",
       "solcConfig": {
         "version": "0.8.20",
@@ -151,6 +151,45 @@
       ],
       "artifacts": [
         "MockUSDC"
+      ]
+    },
+    "/Users/fayehall/ethglobal-unite-defi/near-escrow-src/contracts/ShadeAgentSolver.sol": {
+      "lastModificationDate": 1754108883636,
+      "contentHash": "e27c0af3b0339061fe8c2f837a5fe81b",
+      "sourceName": "contracts/ShadeAgentSolver.sol",
+      "solcConfig": {
+        "version": "0.8.20",
+        "settings": {
+          "optimizer": {
+            "enabled": true,
+            "runs": 200
+          },
+          "viaIR": true,
+          "evmVersion": "paris",
+          "outputSelection": {
+            "*": {
+              "*": [
+                "abi",
+                "evm.bytecode",
+                "evm.deployedBytecode",
+                "evm.methodIdentifiers",
+                "metadata"
+              ],
+              "": [
+                "ast"
+              ]
+            }
+          }
+        }
+      },
+      "imports": [
+        "./HTLC.sol"
+      ],
+      "versionPragmas": [
+        "^0.8.20"
+      ],
+      "artifacts": [
+        "ShadeAgentSolver"
       ]
     }
   }
