@@ -1,9 +1,9 @@
 {
   "network": "unknown",
-  "dutchAuctionAddress": "0x0165878A594ca255338adfa4d48449f69242Eb8F",
+  "dutchAuctionAddress": "0xa85233C63b9Ee964Add6F2cffe00Fd84eb32338f",
   "htlcContractAddress": "0x36C02dA8a0983159322a80FFE9F24b1acfF8B570",
   "usdcTokenAddress": "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707",
   "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
-  "blockNumber": 6,
-  "timestamp": "2025-08-02T03:37:42.216Z"
+  "blockNumber": 24,
+  "timestamp": "2025-08-02T04:01:14.614Z"
 }

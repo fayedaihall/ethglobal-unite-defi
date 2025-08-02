@@ -15,6 +15,8 @@ interface EscrowAuctionData {
   userEthAddress: string;
   fillAmount: string;
   swapDirection: "ETH_TO_NEAR" | "NEAR_TO_ETH";
+  partialFill?: boolean;
+  remainingAmount?: string;
 }
 
 interface OneInchSwapData {
@@ -23,6 +25,17 @@ interface OneInchSwapData {
   fromAmount: string;
   toAmount: string;
   swapDirection: "ETH_TO_NEAR" | "NEAR_TO_ETH";
+  partialFill?: boolean;
+  remainingAmount?: string;
+}
+
+interface PartialFillData {
+  auctionId: number;
+  escrowId: number;
+  secret: string;
+  fillAmount: string;
+  remainingAmount: string;
+  totalCost: string;
 }
 
 class AuctionEscrowIntegration {
@@ -58,6 +71,7 @@ class AuctionEscrowIntegration {
       dutchAuctionAddress,
       [
         "function placeBid(uint256 auctionId, bytes32 escrowId) external",
+        "function placeBid(uint256 auctionId, bytes32 escrowId, uint256 fillAmount) external",
         "function getAuctionSeller(uint256 auctionId) external view returns (address)",
         "function getAuctionToken(uint256 auctionId) external view returns (address)",
         "function getAuctionStartAmount(uint256 auctionId) external view returns (uint256)",
@@ -72,6 +86,8 @@ class AuctionEscrowIntegration {
         "function getAuctionBuyer(uint256 auctionId) external view returns (address)",
         "function getAuctionEscrowId(uint256 auctionId) external view returns (bytes32)",
         "function getCurrentPrice(uint256 auctionId) public view returns (uint256)",
+        "function getAuctionFilledAmount(uint256 auctionId) external view returns (uint256)",
+        "function getAuctionRemainingAmount(uint256 auctionId) external view returns (uint256)",
       ],
       this.wallet
     );
@@ -133,9 +149,15 @@ class AuctionEscrowIntegration {
     fromToken: string,
     toToken: string,
     fromAmount: string,
-    swapDirection: "ETH_TO_NEAR" | "NEAR_TO_ETH"
+    swapDirection: "ETH_TO_NEAR" | "NEAR_TO_ETH",
+    partialFillAmount?: string
   ): Promise<OneInchSwapData> {
     console.log(`🔄 Creating 1inch Fusion+ swap: ${swapDirection}`);
+
+    const actualAmount = partialFillAmount || fromAmount;
+    const isPartialFill = partialFillAmount
+      ? partialFillAmount !== fromAmount
+      : false;
 
     // Generate escrow data for cross-chain swap
     const escrowId = Math.floor(Math.random() * 1000000);
@@ -147,6 +169,13 @@ class AuctionEscrowIntegration {
     console.log(`   Escrow ID: ${escrowId}`);
     console.log(`   Secret: ${secret}`);
     console.log(`   Hashlock: ${hashlock}`);
+    console.log(`   Fill Amount: ${actualAmount}`);
+    if (isPartialFill) {
+      console.log(`   Partial Fill: ${partialFillAmount} / ${fromAmount}`);
+      console.log(
+        `   Remaining: ${BigInt(fromAmount) - BigInt(partialFillAmount!)}`
+      );
+    }
 
     // Create HTLC locks on both chains
     if (swapDirection === "ETH_TO_NEAR") {
@@ -154,7 +183,7 @@ class AuctionEscrowIntegration {
       await this.createHTLCLock(
         escrowId,
         "0x0000000000000000000000000000000000000000",
-        fromAmount,
+        actualAmount,
         hashlock,
         timelock
       );
@@ -165,7 +194,7 @@ class AuctionEscrowIntegration {
       await this.createHTLCLock(
         escrowId,
         "0x0000000000000000000000000000000000000000",
-        fromAmount,
+        actualAmount,
         hashlock,
         timelock
       );
@@ -175,8 +204,12 @@ class AuctionEscrowIntegration {
       fromToken,
       toToken,
       fromAmount,
-      toAmount: fromAmount, // 1:1 swap for demo
+      toAmount: actualAmount,
       swapDirection,
+      partialFill: isPartialFill,
+      remainingAmount: isPartialFill
+        ? (BigInt(fromAmount) - BigInt(partialFillAmount!)).toString()
+        : undefined,
     };
   }
 
@@ -406,10 +439,107 @@ class AuctionEscrowIntegration {
     console.log(`✅ HTLC lock created. Tx: ${createTx.hash}`);
   }
 
+  async placePartialBid(
+    auctionId: number,
+    escrowId: number,
+    secret: string,
+    fillAmount: string
+  ): Promise<PartialFillData> {
+    console.log(`💰 Placing partial bid with escrow integration...`);
+
+    try {
+      // Get current auction price
+      const currentPrice = await this.dutchAuctionContract.getCurrentPrice(
+        auctionId
+      );
+      console.log(
+        `Current auction price: ${currentPrice} (${
+          parseInt(currentPrice) / 1000000
+        } USDC)`
+      );
+
+      // Check remaining amount
+      const remainingAmount =
+        await this.dutchAuctionContract.getAuctionRemainingAmount(auctionId);
+      console.log(`Remaining amount: ${remainingAmount}`);
+
+      if (BigInt(fillAmount) > BigInt(remainingAmount)) {
+        throw new Error(
+          `Fill amount ${fillAmount} exceeds remaining amount ${remainingAmount}`
+        );
+      }
+
+      // Check USDC balance
+      const balance = await this.usdcContract.balanceOf(this.wallet.address);
+      console.log(
+        `Your USDC balance: ${balance.toString()} (${
+          parseInt(balance.toString()) / 1000000
+        } USDC)`
+      );
+
+      const totalCost =
+        (BigInt(currentPrice) * BigInt(fillAmount)) / BigInt(1000000);
+      if (BigInt(balance) < totalCost) {
+        throw new Error("Insufficient USDC balance");
+      }
+
+      // Get current nonce
+      const currentNonce = await this.wallet.getNonce();
+      console.log(`Using nonce: ${currentNonce}`);
+
+      // Approve USDC spending for auction contract
+      const approveTx = await this.usdcContract.approve(
+        await this.dutchAuctionContract.getAddress(),
+        totalCost,
+        { nonce: currentNonce }
+      );
+      await approveTx.wait();
+      console.log(`✅ USDC approval confirmed for auction`);
+
+      // Place partial bid with escrow ID using next nonce
+      const escrowIdBytes = ethers.keccak256(
+        ethers.toUtf8Bytes(escrowId.toString())
+      );
+      const bidTx = await this.dutchAuctionContract[
+        "placeBid(uint256,bytes32,uint256)"
+      ](auctionId, escrowIdBytes, fillAmount, { nonce: currentNonce + 1 });
+      await bidTx.wait();
+
+      console.log(`✅ Partial bid placed successfully!`);
+      console.log(`Transaction Hash: ${bidTx.hash}`);
+      console.log(`Fill Amount: ${fillAmount}`);
+      console.log(`Total Cost: ${totalCost}`);
+
+      // Get updated remaining amount
+      const newRemainingAmount =
+        await this.dutchAuctionContract.getAuctionRemainingAmount(auctionId);
+      console.log(`Remaining Amount: ${newRemainingAmount}`);
+
+      // Complete escrow withdrawal
+      await this.completeEscrowWithdrawal(escrowId, secret);
+
+      return {
+        auctionId,
+        escrowId,
+        secret,
+        fillAmount,
+        remainingAmount: newRemainingAmount.toString(),
+        totalCost: totalCost.toString(),
+      };
+    } catch (error: any) {
+      console.error(
+        "❌ Failed to place partial bid with escrow:",
+        error.message
+      );
+      throw error;
+    }
+  }
+
   async placeBidWithEscrow(
     auctionId: number,
     escrowId: number,
-    secret: string
+    secret: string,
+    partialFillAmount?: string
   ): Promise<void> {
     console.log(`💰 Placing bid with escrow integration...`);
 
@@ -453,14 +583,29 @@ class AuctionEscrowIntegration {
       const escrowIdBytes = ethers.keccak256(
         ethers.toUtf8Bytes(escrowId.toString())
       );
-      const bidTx = await this.dutchAuctionContract.placeBid(
-        auctionId,
-        escrowIdBytes,
-        { nonce: currentNonce + 1 }
-      );
-      await bidTx.wait();
+      let bidTx;
 
-      console.log(`✅ Bid placed successfully!`);
+      if (partialFillAmount) {
+        // Place partial bid
+        bidTx = await this.dutchAuctionContract[
+          "placeBid(uint256,bytes32,uint256)"
+        ](auctionId, escrowIdBytes, partialFillAmount, {
+          nonce: currentNonce + 1,
+        });
+        await bidTx.wait();
+        console.log(`✅ Partial bid placed successfully!`);
+        console.log(`Fill Amount: ${partialFillAmount}`);
+      } else {
+        // Place full bid
+        bidTx = await this.dutchAuctionContract["placeBid(uint256,bytes32)"](
+          auctionId,
+          escrowIdBytes,
+          { nonce: currentNonce + 1 }
+        );
+        await bidTx.wait();
+        console.log(`✅ Full bid placed successfully!`);
+      }
+
       console.log(`Transaction Hash: ${bidTx.hash}`);
       console.log(`Escrow ID: ${escrowId}`);
 
@@ -738,8 +883,14 @@ async function main() {
         const auctionId = parseInt(process.argv[3]);
         const escrowId = parseInt(process.argv[4]);
         const secret = process.argv[5];
+        const partialFillAmount = process.argv[6]; // Optional partial fill amount
 
-        console.log("Debug - parsed args:", { auctionId, escrowId, secret });
+        console.log("Debug - parsed args:", {
+          auctionId,
+          escrowId,
+          secret,
+          partialFillAmount,
+        });
 
         if (
           auctionId === undefined ||
@@ -749,15 +900,54 @@ async function main() {
           !secret
         ) {
           console.error(
-            "Usage: ts-node scripts/auction-escrow-integration.ts bid <auctionId> <escrowId> <secret>"
+            "Usage: ts-node scripts/auction-escrow-integration.ts bid <auctionId> <escrowId> <secret> [partialFillAmount]"
           );
           console.error(
-            "Example: ts-node scripts/auction-escrow-integration.ts bid 0 123 abc123..."
+            "Example: ts-node scripts/auction-escrow-integration.ts bid 0 123 abc123... 500000"
           );
           process.exit(1);
         }
 
-        await integration.placeBidWithEscrow(auctionId, escrowId, secret);
+        await integration.placeBidWithEscrow(
+          auctionId,
+          escrowId,
+          secret,
+          partialFillAmount
+        );
+        break;
+
+      case "partial-bid":
+        const partialAuctionId = parseInt(process.argv[3]);
+        const partialEscrowId = parseInt(process.argv[4]);
+        const partialSecret = process.argv[5];
+        const fillAmount = process.argv[6];
+
+        if (
+          partialAuctionId === undefined ||
+          partialAuctionId === null ||
+          partialEscrowId === undefined ||
+          partialEscrowId === null ||
+          !partialSecret ||
+          !fillAmount
+        ) {
+          console.error(
+            "Usage: ts-node scripts/auction-escrow-integration.ts partial-bid <auctionId> <escrowId> <secret> <fillAmount>"
+          );
+          console.error(
+            "Example: ts-node scripts/auction-escrow-integration.ts partial-bid 0 123 abc123... 500000"
+          );
+          process.exit(1);
+        }
+
+        const partialResult = await integration.placePartialBid(
+          partialAuctionId,
+          partialEscrowId,
+          partialSecret,
+          fillAmount
+        );
+
+        console.log("\n📋 Partial Fill Summary:");
+        console.log(JSON.stringify(partialResult, null, 2));
         break;
 
       case "bid-near":
@@ -796,13 +986,14 @@ async function main() {
         const toToken = process.argv[4];
         const fromAmount = process.argv[5];
         const swapDirection = process.argv[6] as "ETH_TO_NEAR" | "NEAR_TO_ETH";
+        const partialSwapAmount = process.argv[7]; // Optional partial swap amount
 
         if (!fromToken || !toToken || !fromAmount || !swapDirection) {
           console.error(
-            "Usage: ts-node scripts/auction-escrow-integration.ts fusion-swap <fromToken> <toToken> <fromAmount> <swapDirection>"
+            "Usage: ts-node scripts/auction-escrow-integration.ts fusion-swap <fromToken> <toToken> <fromAmount> <swapDirection> [partialAmount]"
           );
           console.error(
-            "Example: ts-node scripts/auction-escrow-integration.ts fusion-swap 0x123... 0x456... 1000000 ETH_TO_NEAR"
+            "Example: ts-node scripts/auction-escrow-integration.ts fusion-swap 0x123... 0x456... 1000000 ETH_TO_NEAR 500000"
           );
           console.error("Swap directions: ETH_TO_NEAR, NEAR_TO_ETH");
           process.exit(1);
@@ -812,7 +1003,8 @@ async function main() {
           fromToken,
           toToken,
           fromAmount,
-          swapDirection
+          swapDirection,
+          partialSwapAmount
         );
 
         console.log("\n📋 1inch Fusion+ Swap Summary:");
@@ -868,13 +1060,18 @@ async function main() {
         console.log(
           "  create-near <tokenAddress> <startAmount> <minAmount> <duration> <stepTime> <stepAmount> <userNearAccountId>"
         );
-        console.log("  bid <auctionId> <escrowId> <secret>");
+        console.log(
+          "  bid <auctionId> <escrowId> <secret> [partialFillAmount]"
+        );
+        console.log(
+          "  partial-bid <auctionId> <escrowId> <secret> <fillAmount>"
+        );
         console.log(
           "  bid-near <auctionId> <escrowId> <secret> <nearAccountId>"
         );
         console.log("  status <auctionId>");
         console.log(
-          "  fusion-swap <fromToken> <toToken> <fromAmount> <swapDirection>"
+          "  fusion-swap <fromToken> <toToken> <fromAmount> <swapDirection> [partialAmount]"
         );
         console.log("  execute-fusion <escrowId> <secret> <swapDirection>");
         console.log("\n1inch Fusion+ Cross-chain Swap Commands:");
@@ -882,6 +1079,11 @@ async function main() {
           "  fusion-swap - Create cross-chain swap with hashlock/timelock"
         );
         console.log("  execute-fusion - Execute cross-chain swap using secret");
+        console.log("\nPartial Fill Commands:");
+        console.log("  partial-bid - Place partial bid on auction");
+        console.log(
+          "  fusion-swap with partialAmount - Create partial cross-chain swap"
+        );
         console.log("\nSwap Directions:");
         console.log("  ETH_TO_NEAR - Swap from Ethereum to NEAR");
         console.log("  NEAR_TO_ETH - Swap from NEAR to Ethereum");

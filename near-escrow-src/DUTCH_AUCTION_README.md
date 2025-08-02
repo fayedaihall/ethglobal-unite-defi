@@ -2,7 +2,7 @@
 
 ## Overview
 
-This project implements a novel extension for 1inch Cross-chain Swap (Fusion+) that enables bidirectional swaps between Ethereum and NEAR, featuring Dutch auction functionality with hashlock and timelock mechanisms.
+This project implements a novel extension for 1inch Cross-chain Swap (Fusion+) that enables bidirectional swaps between Ethereum and NEAR, featuring Dutch auction functionality with hashlock and timelock mechanisms, **now enhanced with partial fill capabilities**.
 
 ## Key Features
 
@@ -12,11 +12,19 @@ This project implements a novel extension for 1inch Cross-chain Swap (Fusion+) t
 2. **Hashlock & Timelock Preservation**: Maintains non-EVM hashlock and timelock functionality
 3. **Bidirectional Swaps**: Full support for ETH↔NEAR swaps in both directions
 4. **Dutch Auction Integration**: Combines auction mechanics with cross-chain escrow
+5. **🆕 Partial Fill Support**: Enables partial fills for both auctions and cross-chain swaps
 
 ### 🔄 Cross-Chain Swap Directions
 
 - **ETH_TO_NEAR**: Swap tokens from Ethereum to NEAR
 - **NEAR_TO_ETH**: Swap tokens from NEAR to Ethereum
+
+### 🆕 Partial Fill Features
+
+- **Partial Auction Bids**: Fill only a portion of available auction amount
+- **Partial Cross-Chain Swaps**: Execute partial swaps between chains
+- **Remaining Amount Tracking**: Real-time tracking of unfilled amounts
+- **Flexible Fill Amounts**: Support for any fill amount up to remaining total
 
 ### 🏗️ Architecture
 
@@ -27,15 +35,15 @@ This project implements a novel extension for 1inch Cross-chain Swap (Fusion+) t
 │ • Dutch Auction │    │ • Hashlock      │    │ • Escrow        │
 │ • USDC Token    │    │ • Timelock      │    │ • Resolver      │
 │ • HTLC Contract │    │ • Cross-chain   │    │ • Withdrawal    │
-└─────────────────┘    │   Escrow        │    └─────────────────┘
-                       └─────────────────┘
+│ • Partial Fills │    │   Escrow        │    │ • Partial Fills │
+└─────────────────┘    └─────────────────┘    └─────────────────┘
 ```
 
 ## Smart Contracts
 
 ### Ethereum Contracts
 
-- **DutchAuction.sol**: Dutch auction with escrow integration
+- **DutchAuction.sol**: Dutch auction with escrow integration and partial fill support
 - **HTLC.sol**: Hashed Timelock Contract for cross-chain escrow
 - **MockUSDC.sol**: USDC token for testing
 
@@ -45,6 +53,42 @@ This project implements a novel extension for 1inch Cross-chain Swap (Fusion+) t
 - **Resolver Registration**: Manages cross-chain resolution
 
 ## Usage
+
+### 🆕 Partial Fill Commands
+
+#### Partial Cross-Chain Swap
+
+```bash
+# ETH to NEAR partial swap (300k out of 1M)
+export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts fusion-swap \
+  0x5FC8d32690cc91D4c39d9d3abcBD16989F875707 \
+  0x0000000000000000000000000000000000000000 \
+  1000000 \
+  ETH_TO_NEAR \
+  300000
+
+# NEAR to ETH partial swap (500k out of 1M)
+export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts fusion-swap \
+  0x0000000000000000000000000000000000000000 \
+  0x5FC8d32690cc91D4c39d9d3abcBD16989F875707 \
+  1000000 \
+  NEAR_TO_ETH \
+  500000
+```
+
+#### Partial Auction Bid
+
+```bash
+# Place partial bid (300k out of remaining amount)
+export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts bid \
+  1 92197 "06f7bdaa4e58e83571ed6e8daf6748974e4dae50cec1052dc2c054a00160a41e" \
+  300000
+
+# Dedicated partial bid command
+export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts partial-bid \
+  1 92197 "06f7bdaa4e58e83571ed6e8daf6748974e4dae50cec1052dc2c054a00160a41e" \
+  300000
+```
 
 ### 1inch Fusion+ Cross-Chain Swaps
 
@@ -112,16 +156,22 @@ export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts bid-nea
 
 ## Available Commands
 
+### 🆕 Partial Fill Commands
+
+- `bid <auctionId> <escrowId> <secret> [partialFillAmount]` - Place bid with optional partial fill
+- `partial-bid <auctionId> <escrowId> <secret> <fillAmount>` - Place dedicated partial bid
+- `fusion-swap <fromToken> <toToken> <fromAmount> <swapDirection> [partialAmount]` - Create cross-chain swap with optional partial fill
+
 ### Cross-Chain Swap Commands
 
-- `fusion-swap <fromToken> <toToken> <fromAmount> <swapDirection>` - Create cross-chain swap
+- `fusion-swap <fromToken> <toToken> <fromAmount> <swapDirection> [partialAmount]` - Create cross-chain swap
 - `execute-fusion <escrowId> <secret> <swapDirection>` - Execute cross-chain swap
 
 ### Auction Commands
 
 - `create <tokenAddress> <startAmount> <minAmount> <duration> <stepTime> <stepAmount> <userEthAddress>` - Create ETH→NEAR auction
 - `create-near <tokenAddress> <startAmount> <minAmount> <duration> <stepTime> <stepAmount> <userNearAccountId>` - Create NEAR→ETH auction
-- `bid <auctionId> <escrowId> <secret>` - Place bid (ETH direction)
+- `bid <auctionId> <escrowId> <secret> [partialFillAmount]` - Place bid (ETH direction)
 - `bid-near <auctionId> <escrowId> <secret> <nearAccountId>` - Place bid (NEAR direction)
 - `status <auctionId>` - Check auction status
 
@@ -149,6 +199,12 @@ export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts bid-nea
 - HTLC locks on both chains
 - Resolver registration on NEAR
 - Cross-chain secret verification
+
+### 🆕 Partial Fill Security
+
+- Amount validation against remaining totals
+- Real-time balance checks
+- Atomic partial operations
 
 ## Environment Variables
 
@@ -191,22 +247,23 @@ npx hardhat node
 
 ## Testing
 
-### Test Cross-Chain Swap
+### Test Partial Cross-Chain Swap
 
 ```bash
-# Create swap
+# Create partial swap (300k out of 1M)
 export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts fusion-swap \
   0x5FC8d32690cc91D4c39d9d3abcBD16989F875707 \
   0x0000000000000000000000000000000000000000 \
   1000000 \
-  ETH_TO_NEAR
+  ETH_TO_NEAR \
+  300000
 
 # Execute swap (use escrowId and secret from above)
 export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts execute-fusion \
   <escrowId> <secret> ETH_TO_NEAR
 ```
 
-### Test Dutch Auction
+### Test Partial Auction Bid
 
 ```bash
 # Create auction
@@ -215,9 +272,9 @@ export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts create 
   1000000 500000 3600 300 50000 \
   0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266
 
-# Place bid (use auctionId, escrowId, and secret from above)
+# Place partial bid (use auctionId, escrowId, and secret from above)
 export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts bid \
-  <auctionId> <escrowId> <secret>
+  <auctionId> <escrowId> <secret> 300000
 ```
 
 ## Architecture Benefits
@@ -228,6 +285,8 @@ export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts bid \
 4. **Timelock Protection**: Time-based security for failed swaps
 5. **Non-EVM Compatibility**: Preserves NEAR's unique features
 6. **Atomic Operations**: Ensures swap success or complete rollback
+7. **🆕 Partial Fill Flexibility**: Enables granular control over fill amounts
+8. **🆕 Real-time Tracking**: Monitors remaining amounts and fill progress
 
 ## Future Enhancements
 
@@ -236,3 +295,5 @@ export NODE_ENV=testnet && ts-node scripts/auction-escrow-integration.ts bid \
 - Advanced auction types (English, sealed-bid)
 - Cross-chain liquidity pools
 - MEV protection mechanisms
+- **🆕 Advanced Partial Fill Strategies**: Market-making and arbitrage support
+- **🆕 Multi-hop Partial Fills**: Complex routing with partial fills
