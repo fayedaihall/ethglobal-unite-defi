@@ -168,6 +168,41 @@ export default function BetSwapDemo() {
   const [crossChainWinnings, setCrossChainWinnings] = useState<number>(0);
   const [crossChainWinRate, setCrossChainWinRate] = useState<number>(0);
 
+  // Create Event Modal State
+  const [showCreateEventModal, setShowCreateEventModal] = useState(false);
+
+  // Debug modal state changes
+  useEffect(() => {
+    console.log('🔍 Modal state changed:', showCreateEventModal);
+  }, [showCreateEventModal]);
+  const [newEventTitle, setNewEventTitle] = useState('');
+  const [newEventDescription, setNewEventDescription] = useState('');
+  const [newEventEndTime, setNewEventEndTime] = useState('');
+  const [isCreatingEvent, setIsCreatingEvent] = useState(false);
+
+  // AI Resolution State
+  const [aiResolutionResults, setAiResolutionResults] = useState<{
+    [eventId: string]: {
+      outcome: boolean;
+      confidence: number;
+      oracleData: string;
+      timestamp: number;
+    }
+  }>({});
+  const [isResolvingEvent, setIsResolvingEvent] = useState(false);
+
+  // Win Notification State
+  const [winNotifications, setWinNotifications] = useState<Array<{
+    id: string;
+    eventTitle: string;
+    betAmount: string;
+    winAmount: string;
+    chain: 'ethereum' | 'near' | 'cross-chain';
+    timestamp: number;
+    isRead: boolean;
+  }>>([]);
+  const [showWinNotification, setShowWinNotification] = useState(false);
+
   // Load data from localStorage after hydration
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -180,6 +215,9 @@ export default function BetSwapDemo() {
       const savedCrossChainBets = localStorage.getItem('betswap_cross_chain_bets');
       const savedCrossChainWinnings = localStorage.getItem('betswap_cross_chain_winnings');
       const savedCrossChainWinRate = localStorage.getItem('betswap_cross_chain_winrate');
+      const savedEthereumEvents = localStorage.getItem('betswap_ethereum_events');
+      const savedNearEvents = localStorage.getItem('betswap_near_events');
+      const savedWinNotifications = localStorage.getItem('betswap_win_notifications');
 
       if (savedEthereumBets) {
         setEthereumNativeBets(JSON.parse(savedEthereumBets));
@@ -208,9 +246,29 @@ export default function BetSwapDemo() {
       if (savedCrossChainWinRate) {
         setCrossChainWinRate(parseFloat(savedCrossChainWinRate));
       }
+      if (savedEthereumEvents) {
+        setEthereumEvents(JSON.parse(savedEthereumEvents));
+      }
+      if (savedNearEvents) {
+        setNearEvents(JSON.parse(savedNearEvents));
+      }
+      if (savedWinNotifications) {
+        setWinNotifications(JSON.parse(savedWinNotifications));
+      }
     }
     setIsHydrated(true);
   }, []);
+
+  // Check for ended events periodically
+  useEffect(() => {
+    if ((!ethereumAccount || !contractManager) && !nearAccount) return;
+
+    const interval = setInterval(() => {
+      checkAndResolveEndedEvents();
+    }, 30000); // Check every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [ethereumAccount, contractManager, nearAccount, ethereumEvents, nearEvents, aiResolutionResults]);
 
 
 
@@ -368,6 +426,27 @@ export default function BetSwapDemo() {
         const simulatedWinning = Math.random() > 0.5 ? betAmount * 1.5 : 0;
         setEthereumNativeWinnings(prev => prev + simulatedWinning);
 
+        // Create win notification if user won
+        if (simulatedWinning > 0) {
+          const event = ethereumEvents.find(e => e.id === bet.eventId);
+          const winNotification = {
+            id: Date.now().toString(),
+            eventTitle: event?.title || `Event ${bet.eventId}`,
+            betAmount: bet.amount,
+            winAmount: simulatedWinning.toFixed(2),
+            chain: 'ethereum' as const,
+            timestamp: Date.now(),
+            isRead: false
+          };
+          setWinNotifications(prev => [...prev, winNotification]);
+          setShowWinNotification(true);
+
+          // Show toast notification
+          setTimeout(() => {
+            alert(`🎉 CONGRATULATIONS! You won ${simulatedWinning.toFixed(2)} USDC on ${event?.title || `Event ${bet.eventId}`}!`);
+          }, 100);
+        }
+
         // Calculate win rate
         const totalBets = ethereumNativeBets.length + 1;
         const totalWins = ethereumNativeBets.filter(b => Math.random() > 0.5).length + (simulatedWinning > 0 ? 1 : 0);
@@ -420,6 +499,27 @@ export default function BetSwapDemo() {
           const simulatedWinning = Math.random() > 0.5 ? betAmount * 1.5 : 0;
           setNearNativeWinnings(prev => prev + simulatedWinning);
 
+          // Create win notification if user won
+          if (simulatedWinning > 0) {
+            const event = nearEvents.find(e => e.id === bet.eventId);
+            const winNotification = {
+              id: Date.now().toString(),
+              eventTitle: event?.title || `Event ${bet.eventId}`,
+              betAmount: bet.amount,
+              winAmount: simulatedWinning.toFixed(2),
+              chain: 'near' as const,
+              timestamp: Date.now(),
+              isRead: false
+            };
+            setWinNotifications(prev => [...prev, winNotification]);
+            setShowWinNotification(true);
+
+            // Show toast notification
+            setTimeout(() => {
+              alert(`🎉 CONGRATULATIONS! You won ${simulatedWinning.toFixed(2)} USDC on ${event?.title || `Event ${bet.eventId}`}!`);
+            }, 100);
+          }
+
           // Calculate win rate
           const totalBets = nearNativeBets.length + 1;
           const totalWins = nearNativeBets.filter(b => Math.random() > 0.5).length + (simulatedWinning > 0 ? 1 : 0);
@@ -430,7 +530,6 @@ export default function BetSwapDemo() {
         }
       }
       setNearBets([]);
-      alert('NEAR bets placed successfully!');
     } catch (error) {
       console.error('❌ Failed to place NEAR bets:', error);
       alert('Failed to place NEAR bets. Please try again.');
@@ -503,6 +602,27 @@ export default function BetSwapDemo() {
           const betAmount = parseFloat(bet.amount);
           const simulatedWinning = Math.random() > 0.5 ? betAmount * 1.8 : 0; // Higher multiplier for cross-chain
           setCrossChainWinnings(prev => prev + simulatedWinning);
+
+          // Create win notification if user won
+          if (simulatedWinning > 0) {
+            const event = ethereumEvents.find(e => e.id === bet.eventId) || nearEvents.find(e => e.id === bet.eventId);
+            const winNotification = {
+              id: Date.now().toString(),
+              eventTitle: event?.title || `Event ${bet.eventId}`,
+              betAmount: bet.amount,
+              winAmount: simulatedWinning.toFixed(2),
+              chain: 'cross-chain' as const,
+              timestamp: Date.now(),
+              isRead: false
+            };
+            setWinNotifications(prev => [...prev, winNotification]);
+            setShowWinNotification(true);
+
+            // Show toast notification
+            setTimeout(() => {
+              alert(`🎉 CONGRATULATIONS! You won ${simulatedWinning.toFixed(2)} USDC on ${event?.title || `Event ${bet.eventId}`} (Cross-Chain)!`);
+            }, 100);
+          }
 
           // Calculate cross-chain win rate
           const totalBets = crossChainBets.length + 1;
@@ -674,8 +794,29 @@ export default function BetSwapDemo() {
       },
     ];
 
-    setEthereumEvents(sampleEthereumEvents);
-    setNearEvents(sampleNearEvents);
+    // Check if we have saved events from localStorage
+    const savedEthereumEvents = typeof window !== 'undefined' ? localStorage.getItem('betswap_ethereum_events') : null;
+    const savedNearEvents = typeof window !== 'undefined' ? localStorage.getItem('betswap_near_events') : null;
+
+    if (savedEthereumEvents) {
+      const savedEvents = JSON.parse(savedEthereumEvents);
+      // Merge with default events, avoiding duplicates
+      const defaultEventIds = new Set(sampleEthereumEvents.map((e: BettingEvent) => e.id));
+      const newEvents = savedEvents.filter((event: BettingEvent) => !defaultEventIds.has(event.id));
+      setEthereumEvents([...sampleEthereumEvents, ...newEvents]);
+    } else {
+      setEthereumEvents(sampleEthereumEvents);
+    }
+
+    if (savedNearEvents) {
+      const savedEvents = JSON.parse(savedNearEvents);
+      // Merge with default events, avoiding duplicates
+      const defaultEventIds = new Set(sampleNearEvents.map((e: BettingEvent) => e.id));
+      const newEvents = savedEvents.filter((event: BettingEvent) => !defaultEventIds.has(event.id));
+      setNearEvents([...sampleNearEvents, ...newEvents]);
+    } else {
+      setNearEvents(sampleNearEvents);
+    }
   }, [contractManager, ethereumAccount]);
 
   // Save native betting data to localStorage whenever it changes
@@ -733,6 +874,13 @@ export default function BetSwapDemo() {
       localStorage.setItem('betswap_cross_chain_winrate', crossChainWinRate.toString());
     }
   }, [crossChainWinRate]);
+
+  // Save win notifications to localStorage whenever they change
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('betswap_win_notifications', JSON.stringify(winNotifications));
+    }
+  }, [winNotifications]);
 
   // Fetch AI predictions when events are loaded
   useEffect(() => {
@@ -1252,6 +1400,88 @@ export default function BetSwapDemo() {
   const getDynamicOdds = (eventId: string, chain: 'ethereum' | 'near') => {
     const odds = chain === 'ethereum' ? ethereumDynamicOdds : nearDynamicOdds;
     return odds.find(o => o.eventId === eventId);
+  };
+
+  // Check for ended events and resolve with AI
+  const checkAndResolveEndedEvents = async () => {
+    const currentTime = Math.floor(Date.now() / 1000);
+
+    // Check Ethereum events
+    if (contractManager && ethereumAccount) {
+      for (const event of ethereumEvents) {
+        const endTime = parseInt(event.endTime);
+        if (endTime < currentTime && !event.resolved && !aiResolutionResults[event.id]) {
+          console.log(`🤖 Ethereum Event ${event.id} has ended, resolving with AI...`);
+
+          try {
+            setIsResolvingEvent(true);
+
+            // Call the AI resolution function
+            const tx = await contractManager.resolveBetWithAI(parseInt(event.id), 85);
+            await tx.wait();
+
+            // Simulate AI analysis result (in real implementation, this would come from the contract)
+            const aiResult = {
+              outcome: Math.random() > 0.5,
+              confidence: Math.floor(Math.random() * 30) + 70, // 70-100% confidence
+              oracleData: `AI analysis completed for: ${event.title}. Oracle data: Market conditions, historical patterns, and real-time indicators analyzed.`,
+              timestamp: Date.now()
+            };
+
+            setAiResolutionResults(prev => ({
+              ...prev,
+              [event.id]: aiResult
+            }));
+
+            console.log(`✅ Ethereum Event ${event.id} resolved with AI:`, aiResult);
+            alert(`🤖 AI Resolution Complete!\nEvent: ${event.title}\nOutcome: ${aiResult.outcome ? 'Yes' : 'No'}\nConfidence: ${aiResult.confidence}%`);
+
+          } catch (error) {
+            console.error(`❌ Failed to resolve Ethereum event ${event.id} with AI:`, error);
+          } finally {
+            setIsResolvingEvent(false);
+          }
+        }
+      }
+    }
+
+    // Check NEAR events
+    if (nearAccount) {
+      for (const event of nearEvents) {
+        const endTime = parseInt(event.endTime);
+        if (endTime < currentTime && !event.resolved && !aiResolutionResults[event.id]) {
+          console.log(`🤖 NEAR Event ${event.id} has ended, resolving with AI...`);
+
+          try {
+            setIsResolvingEvent(true);
+
+            // Simulate NEAR AI resolution (in real implementation, this would call a NEAR contract)
+            await new Promise(resolve => setTimeout(resolve, 2000)); // Simulate NEAR transaction
+
+            // Simulate AI analysis result for NEAR
+            const aiResult = {
+              outcome: Math.random() > 0.5,
+              confidence: Math.floor(Math.random() * 30) + 70, // 70-100% confidence
+              oracleData: `NEAR AI analysis completed for: ${event.title}. Cross-chain oracle data: NEAR protocol metrics, cross-chain market data, and decentralized oracle analysis.`,
+              timestamp: Date.now()
+            };
+
+            setAiResolutionResults(prev => ({
+              ...prev,
+              [event.id]: aiResult
+            }));
+
+            console.log(`✅ NEAR Event ${event.id} resolved with AI:`, aiResult);
+            alert(`🤖 NEAR AI Resolution Complete!\nEvent: ${event.title}\nOutcome: ${aiResult.outcome ? 'Yes' : 'No'}\nConfidence: ${aiResult.confidence}%`);
+
+          } catch (error) {
+            console.error(`❌ Failed to resolve NEAR event ${event.id} with AI:`, error);
+          } finally {
+            setIsResolvingEvent(false);
+          }
+        }
+      }
+    }
   };
 
   const refreshEventAIPrediction = async (eventId: string, chain: 'ethereum' | 'near') => {
@@ -1902,92 +2132,24 @@ export default function BetSwapDemo() {
             <div className="flex space-x-3">
               <button
                 onClick={() => {
-                  // Refresh native betting data
-                  console.log('🔄 Refreshing native betting dashboard...');
-                }}
-                className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-semibold hover:from-orange-600 hover:to-red-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                title="Refresh Native Betting Data"
-              >
-                🔄 Refresh
-              </button>
-              <button
-                onClick={async () => {
-                  if (contractManager && ethereumAccount) {
-                    console.log('🔄 Creating all events manually...');
-                    try {
-                      const events = [
-                        { id: '1', title: 'Bitcoin ETF Approval Q4 2025', description: 'Will the SEC approve additional spot Bitcoin ETFs by December 31, 2025?' },
-                        { id: '2', title: 'Premier League 2025/26 Winner', description: 'Will Manchester City win the 2025/26 Premier League title?' },
-                        { id: '3', title: 'UEFA Champions League 2025/26', description: 'Will Real Madrid win the 2025/26 UEFA Champions League?' },
-                        { id: '4', title: 'NBA Finals 2025 Winner', description: 'Will the Boston Celtics win the 2025 NBA Championship?' },
-                        { id: '5', title: 'Tesla Stock Performance 2025', description: 'Will TSLA close above $300 on December 31, 2025?' },
-                        { id: '6', title: 'World Cup 2026 Winner', description: 'Will the United States reach the semifinals of the 2026 FIFA World Cup?' }
-                      ];
+                  console.log('🎯 Create Event button clicked');
+                  console.log('ethereumAccount:', ethereumAccount);
+                  console.log('nearAccount:', nearAccount);
+                  console.log('contractManager:', contractManager);
 
-                      for (const event of events) {
-                        try {
-                          const endTime = Math.floor(Date.now() / 1000) + 86400; // 24 hours from now
-                          await contractManager.createBetEvent(
-                            event.title,
-                            event.description,
-                            endTime
-                          );
-                          console.log(`✅ Event ${event.id} created successfully`);
-                        } catch (error) {
-                          console.log(`ℹ️ Event ${event.id} may already exist, continuing...`);
-                        }
-                      }
-                      alert('✅ All events created successfully!');
-                    } catch (error) {
-                      console.error('Error creating events:', error);
-                      alert('❌ Error creating events. Please try again.');
-                    }
+                  if (ethereumAccount || nearAccount) {
+                    console.log('✅ Opening create event modal...');
+                    setShowCreateEventModal(true);
                   } else {
-                    alert('Please connect to Ethereum first!');
+                    console.log('❌ No wallet connected');
+                    alert('Please connect to Ethereum or NEAR first!');
                   }
                 }}
-                disabled={!ethereumAccount}
-                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-semibold hover:from-blue-600 hover:to-purple-600 disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                title="Create All Events on Blockchain"
+                disabled={!ethereumAccount && !nearAccount}
+                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-semibold hover:from-blue-600 hover:to-purple-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                title="Create New Event"
               >
-                🎯 Create Events
-              </button>
-              <button
-                onClick={() => {
-                  if (confirm('Are you sure you want to clear all betting data? This cannot be undone.')) {
-                    // Clear all native betting data
-                    setEthereumNativeBets([]);
-                    setNearNativeBets([]);
-                    setEthereumNativeWinnings(0);
-                    setNearNativeWinnings(0);
-                    setEthereumNativeWinRate(0);
-                    setNearNativeWinRate(0);
-
-                    // Clear cross-chain betting data
-                    setCrossChainBets([]);
-                    setCrossChainWinnings(0);
-                    setCrossChainWinRate(0);
-
-                    // Clear localStorage
-                    if (typeof window !== 'undefined') {
-                      localStorage.removeItem('betswap_ethereum_native_bets');
-                      localStorage.removeItem('betswap_near_native_bets');
-                      localStorage.removeItem('betswap_ethereum_native_winnings');
-                      localStorage.removeItem('betswap_near_native_winnings');
-                      localStorage.removeItem('betswap_ethereum_native_winrate');
-                      localStorage.removeItem('betswap_near_native_winrate');
-                      localStorage.removeItem('betswap_cross_chain_bets');
-                      localStorage.removeItem('betswap_cross_chain_winnings');
-                      localStorage.removeItem('betswap_cross_chain_winrate');
-                    }
-
-                    alert('✅ All betting data cleared successfully!');
-                  }
-                }}
-                className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:from-red-600 hover:to-red-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-                title="Clear All Betting Data"
-              >
-                🗑️ Clear Data
+                🎯 Create Event on {ethereumAccount ? 'ETH' : nearAccount ? 'NEAR' : 'ETH or NEAR'}
               </button>
             </div>
           </div>
@@ -2110,6 +2272,165 @@ export default function BetSwapDemo() {
               </div>
             </div>
           </div>
+        </div>
+      )}
+
+      {/* AI Resolution Results */}
+      {isHydrated && Object.keys(aiResolutionResults).length > 0 && (
+        <div className="gradient-card rounded-2xl shadow-2xl p-8 mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                🤖 AI Resolution Results
+              </h2>
+              <p className="text-gray-600 text-sm mt-1">AI-powered event resolution for ended betting events</p>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={checkAndResolveEndedEvents}
+                disabled={isResolvingEvent || ((!ethereumAccount || !contractManager) && !nearAccount)}
+                className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                title="Resolve Ended Events with AI"
+              >
+                {isResolvingEvent ? '🔄 Resolving...' : '🤖 Resolve Ended Events'}
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {Object.entries(aiResolutionResults).map(([eventId, result]) => {
+              const event = ethereumEvents.find(e => e.id === eventId) || nearEvents.find(e => e.id === eventId);
+              return (
+                <div key={eventId} className="gradient-card rounded-xl shadow-lg p-6 card-hover">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">{event?.title || `Event ${eventId}`}</h3>
+                      <p className="text-sm text-gray-600">{event?.description || 'Event description not available'}</p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${result.outcome ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                      {result.outcome ? '✅ YES' : '❌ NO'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="font-semibold text-gray-900">AI Confidence</span>
+                        <span className="text-lg font-bold text-purple-600">{result.confidence}%</span>
+                      </div>
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="font-semibold text-gray-900">Resolution Time</span>
+                        <span className="text-sm text-gray-600">{new Date(result.timestamp).toLocaleString()}</span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-gray-900">Oracle Data</span>
+                        <span className="text-sm text-blue-600">✓ Verified</span>
+                      </div>
+                    </div>
+
+                    <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4">
+                      <h4 className="font-semibold text-gray-900 mb-3">AI Analysis</h4>
+                      <p className="text-sm text-gray-700 leading-relaxed">
+                        {result.oracleData}
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {Object.keys(aiResolutionResults).length === 0 && (
+            <div className="text-center py-8">
+              <div className="text-4xl mb-4">🤖</div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No AI Resolutions Yet</h3>
+              <p className="text-gray-600 mb-4">AI will automatically resolve ended events when you're connected to Ethereum or NEAR</p>
+              <button
+                onClick={checkAndResolveEndedEvents}
+                disabled={isResolvingEvent || ((!ethereumAccount || !contractManager) && !nearAccount)}
+                className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+              >
+                {isResolvingEvent ? '🔄 Resolving...' : '🤖 Check for Ended Events'}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Win Notifications */}
+      {isHydrated && winNotifications.length > 0 && (
+        <div className="gradient-card rounded-2xl shadow-2xl p-8 mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
+                🎉 Win Notifications
+              </h2>
+              <p className="text-gray-600 text-sm mt-1">Your recent betting victories and winnings</p>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setWinNotifications([])}
+                className="px-4 py-2 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-all duration-300"
+                title="Clear All Notifications"
+              >
+                Clear All
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {winNotifications.slice(-6).reverse().map((notification) => (
+              <div key={notification.id} className="gradient-card rounded-xl shadow-lg p-6 card-hover">
+                <div className="flex justify-between items-start mb-4">
+                  <div>
+                    <h3 className="text-lg font-bold text-gray-900">{notification.eventTitle}</h3>
+                    <p className="text-sm text-gray-600">
+                      {new Date(notification.timestamp).toLocaleString()}
+                    </p>
+                  </div>
+                  <span className={`px-3 py-1 rounded-full text-sm font-semibold ${notification.chain === 'ethereum' ? 'bg-blue-100 text-blue-800' :
+                      notification.chain === 'near' ? 'bg-green-100 text-green-800' :
+                        'bg-purple-100 text-purple-800'
+                    }`}>
+                    {notification.chain === 'ethereum' ? '⚡ ETH' :
+                      notification.chain === 'near' ? '🌐 NEAR' : '🔄 Cross-Chain'}
+                  </span>
+                </div>
+
+                <div className="space-y-4">
+                  <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4">
+                    <div className="flex justify-between items-center mb-3">
+                      <span className="font-semibold text-gray-900">Bet Amount</span>
+                      <span className="text-lg font-bold text-blue-600">{notification.betAmount} USDC</span>
+                    </div>
+                    <div className="flex justify-between items-center">
+                      <span className="font-semibold text-gray-900">Winnings</span>
+                      <span className="text-lg font-bold text-green-600">+{notification.winAmount} USDC</span>
+                    </div>
+                  </div>
+
+                  <div className="bg-gradient-to-r from-green-50 to-emerald-50 border border-green-200 rounded-xl p-4">
+                    <div className="flex items-center space-x-2">
+                      <span className="text-2xl">🎉</span>
+                      <span className="font-semibold text-green-800">Congratulations!</span>
+                    </div>
+                    <p className="text-sm text-green-700 mt-1">
+                      You won {notification.winAmount} USDC on this bet!
+                    </p>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+
+          {winNotifications.length === 0 && (
+            <div className="text-center py-8">
+              <div className="text-4xl mb-4">🎯</div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">No Wins Yet</h3>
+              <p className="text-gray-600 mb-4">Place some bets to start winning and see your notifications here!</p>
+            </div>
+          )}
         </div>
       )}
 
@@ -2239,6 +2560,153 @@ export default function BetSwapDemo() {
             </div>
           </div>
         )
+      }
+
+      {/* Create Event Modal */}
+      {showCreateEventModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md mx-4">
+            <h3 className="text-lg font-semibold text-gray-900 mb-4">🎯 Create New Betting Event</h3>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Event Title *
+                </label>
+                <input
+                  type="text"
+                  placeholder="e.g., Bitcoin ETF Approval Q4 2025"
+                  value={newEventTitle}
+                  onChange={(e) => setNewEventTitle(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Event Description *
+                </label>
+                <textarea
+                  placeholder="e.g., Will the SEC approve additional spot Bitcoin ETFs by December 31, 2025?"
+                  value={newEventDescription}
+                  onChange={(e) => setNewEventDescription(e.target.value)}
+                  rows={3}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  End Time *
+                </label>
+                <input
+                  type="datetime-local"
+                  value={newEventEndTime}
+                  onChange={(e) => setNewEventEndTime(e.target.value)}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+                />
+                <p className="text-xs text-gray-500 mt-1">Event will end at this time</p>
+              </div>
+            </div>
+
+            <div className="flex space-x-3 mt-6">
+              <button
+                onClick={async () => {
+                  if (!newEventTitle.trim() || !newEventDescription.trim() || !newEventEndTime) {
+                    alert('Please fill in all required fields');
+                    return;
+                  }
+
+                  setIsCreatingEvent(true);
+                  try {
+                    const endTime = Math.floor(new Date(newEventEndTime).getTime() / 1000);
+
+                    if (ethereumAccount && contractManager) {
+                      // Create event on Ethereum
+                      console.log('🎯 Creating event on Ethereum...');
+                      await contractManager.createBetEvent(
+                        newEventTitle.trim(),
+                        newEventDescription.trim(),
+                        endTime
+                      );
+
+                      // Add new event to Ethereum events list
+                      const newEvent: BettingEvent = {
+                        id: Date.now().toString(), // Generate unique ID
+                        title: newEventTitle.trim(),
+                        description: newEventDescription.trim(),
+                        endTime: endTime.toString(),
+                        totalBets: '0', // New event starts with 0 bets
+                        outcome: null,
+                        resolved: false,
+                      };
+                      setEthereumEvents(prev => [...prev, newEvent]);
+
+                      // Save to localStorage
+                      const updatedEvents = [...ethereumEvents, newEvent];
+                      localStorage.setItem('betswap_ethereum_events', JSON.stringify(updatedEvents));
+
+                      alert('✅ Event created successfully on Ethereum!');
+                    } else if (nearAccount) {
+                      // Create event on NEAR (simulated for now)
+                      console.log('🎯 Creating event on NEAR...');
+                      // In a real implementation, this would call a NEAR contract
+                      // For now, we'll simulate the creation
+                      await new Promise(resolve => setTimeout(resolve, 1000)); // Simulate transaction
+
+                      // Add new event to NEAR events list
+                      const newEvent: BettingEvent = {
+                        id: Date.now().toString(), // Generate unique ID
+                        title: newEventTitle.trim(),
+                        description: newEventDescription.trim(),
+                        endTime: endTime.toString(),
+                        totalBets: '0', // New event starts with 0 bets
+                        outcome: null,
+                        resolved: false,
+                      };
+                      setNearEvents(prev => [...prev, newEvent]);
+
+                      // Save to localStorage
+                      const updatedEvents = [...nearEvents, newEvent];
+                      localStorage.setItem('betswap_near_events', JSON.stringify(updatedEvents));
+
+                      alert('✅ Event created successfully on NEAR!');
+                    } else {
+                      alert('❌ No wallet connected');
+                      return;
+                    }
+
+                    setShowCreateEventModal(false);
+                    setNewEventTitle('');
+                    setNewEventDescription('');
+                    setNewEventEndTime('');
+                  } catch (error) {
+                    console.error('Error creating event:', error);
+                    alert('❌ Error creating event. Please try again.');
+                  } finally {
+                    setIsCreatingEvent(false);
+                  }
+                }}
+                disabled={isCreatingEvent || !newEventTitle.trim() || !newEventDescription.trim() || !newEventEndTime}
+                className="flex-1 px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                {isCreatingEvent ? 'Creating...' : 'Create Event'}
+              </button>
+              <button
+                onClick={() => {
+                  setShowCreateEventModal(false);
+                  setNewEventTitle('');
+                  setNewEventDescription('');
+                  setNewEventEndTime('');
+                }}
+                className="flex-1 px-4 py-2 bg-gray-600 text-white rounded hover:bg-gray-700"
+              >
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )
       }
     </div>
   );

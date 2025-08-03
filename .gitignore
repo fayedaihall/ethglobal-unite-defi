@@ -6,3 +6,5 @@ node_modules
 *.log
 artifacts/
 target/
+.next/static/webpack/
+.next/cache/

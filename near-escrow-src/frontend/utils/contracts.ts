@@ -268,6 +268,14 @@ export class ContractManager {
     );
   }
 
+  async resolveBetWithAI(
+    eventId: number,
+    confidence: number = 85
+  ): Promise<any> {
+    if (!this.betSwapAIContract) throw new Error("Contract not initialized");
+    return await this.betSwapAIContract.resolveBetWithAI(eventId, confidence);
+  }
+
   async getBetEvent(eventId: number): Promise<any> {
     if (!this.betSwapAIContract) throw new Error("Contract not initialized");
 
