@@ -203,6 +203,47 @@ export default function BetSwapDemo() {
   }>>([]);
   const [showWinNotification, setShowWinNotification] = useState(false);
 
+  // Dutch Auction State
+  const [auctions, setAuctions] = useState<Array<{
+    id: number;
+    seller: string;
+    token: string;
+    tokenName: string;
+    tokenSymbol: string;
+    tokenDescription: string;
+    startAmount: string;
+    currentAmount: string;
+    minAmount: string;
+    startTime: number;
+    duration: number;
+    stepTime: number;
+    stepAmount: string;
+    active: boolean;
+    sold: boolean;
+    buyer: string;
+    escrowId: string;
+    filledAmount: string;
+    remainingAmount: string;
+    currentPrice: string;
+    timeRemaining: number;
+  }>>([]);
+  const [showCreateAuctionModal, setShowCreateAuctionModal] = useState(false);
+  const [showBidModal, setShowBidModal] = useState(false);
+  const [selectedAuction, setSelectedAuction] = useState<any>(null);
+  const [isLoadingAuctions, setIsLoadingAuctions] = useState(false);
+
+  // Partial Fill State
+  const [partialFillAmount, setPartialFillAmount] = useState<string>('');
+  const [partialFillMode, setPartialFillMode] = useState<boolean>(false);
+  const [partialFillHistory, setPartialFillHistory] = useState<Array<{
+    auctionId: number;
+    fillAmount: string;
+    fillPrice: string;
+    timestamp: number;
+    txHash: string;
+    buyer: string;
+  }>>([]);
+
   // Load data from localStorage after hydration
   useEffect(() => {
     if (typeof window !== 'undefined') {
@@ -882,6 +923,198 @@ export default function BetSwapDemo() {
     }
   }, [winNotifications]);
 
+  // Load auctions from blockchain
+  const loadAuctions = async () => {
+    if (!contractManager || !ethereumAccount) {
+      console.log('❌ Cannot load auctions: contractManager or ethereumAccount not available');
+      return;
+    }
+
+    try {
+      setIsLoadingAuctions(true);
+      console.log('🔄 Loading auctions from blockchain...');
+
+      // Check if Dutch Auction contract is deployed
+      try {
+        const auctionCounter = await contractManager.getAuctionCounter();
+        console.log(`📊 Found ${auctionCounter} auctions on blockchain`);
+
+        const auctionList = [];
+
+        for (let i = 0; i < auctionCounter; i++) {
+          try {
+            console.log(`🔍 Loading auction ${i}...`);
+            const auctionInfo = await contractManager.getAuctionInfo(i);
+            const currentPrice = await contractManager.getCurrentPrice(i);
+            const now = Math.floor(Date.now() / 1000);
+            const timeRemaining = Math.max(0, (auctionInfo.startTime + auctionInfo.duration) - now);
+
+            // Get token details based on address
+            const getTokenDetails = (tokenAddress: string) => {
+              const tokenMap: { [key: string]: { name: string; symbol: string; description: string } } = {
+                "0x610178dA211FEF7D417bC0e6FeD39F05609AD788": {
+                  name: "Mock USDC",
+                  symbol: "USDC",
+                  description: "Mock USDC token for testing - 6 decimals"
+                },
+                "0x5FC8d32690cc91D4c39d9d3abcBD16989F875707": {
+                  name: "Mock USDC (Local)",
+                  symbol: "USDC",
+                  description: "Mock USDC token for local testing"
+                },
+                "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238": {
+                  name: "USDC Token",
+                  symbol: "USDC",
+                  description: "USD Coin - Stable cryptocurrency pegged to US Dollar"
+                },
+                "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9": {
+                  name: "BetSwap AI Token",
+                  symbol: "BET",
+                  description: "BetSwap AI platform token for betting and rewards"
+                }
+              };
+
+              return tokenMap[tokenAddress.toLowerCase()] || {
+                name: "Unknown Token",
+                symbol: "???",
+                description: `Token at address ${tokenAddress.slice(0, 6)}...${tokenAddress.slice(-4)}`
+              };
+            };
+
+            const tokenDetails = getTokenDetails(auctionInfo.token);
+
+            const auction = {
+              id: i,
+              seller: auctionInfo.seller,
+              token: auctionInfo.token,
+              tokenName: tokenDetails.name,
+              tokenSymbol: tokenDetails.symbol,
+              tokenDescription: tokenDetails.description,
+              startAmount: auctionInfo.startAmount.toString(),
+              currentAmount: auctionInfo.currentAmount.toString(),
+              minAmount: auctionInfo.minAmount.toString(),
+              startTime: auctionInfo.startTime,
+              duration: auctionInfo.duration,
+              stepTime: auctionInfo.stepTime,
+              stepAmount: auctionInfo.stepAmount.toString(),
+              active: auctionInfo.active,
+              sold: auctionInfo.sold,
+              buyer: auctionInfo.buyer,
+              escrowId: auctionInfo.escrowId,
+              filledAmount: auctionInfo.filledAmount.toString(),
+              remainingAmount: auctionInfo.remainingAmount.toString(),
+              currentPrice: currentPrice.toString(),
+              timeRemaining
+            };
+
+            console.log(`✅ Loaded auction ${i}:`, auction);
+            auctionList.push(auction);
+          } catch (error) {
+            console.error(`❌ Error loading auction ${i}:`, error);
+          }
+        }
+
+        console.log(`📋 Total auctions loaded: ${auctionList.length}`);
+        setAuctions(auctionList);
+      } catch (error) {
+        console.error('❌ Dutch Auction contract not deployed or not accessible:', error);
+        // Set empty auctions list to show the "not deployed" message
+        setAuctions([]);
+      }
+    } catch (error) {
+      console.error('❌ Error loading auctions:', error);
+    } finally {
+      setIsLoadingAuctions(false);
+    }
+  };
+
+  // Partial Fill Functions
+  const placePartialBid = async (auctionId: number, fillAmount: string) => {
+    if (!contractManager || !ethereumAccount) {
+      alert('❌ Please connect to Ethereum first');
+      return;
+    }
+
+    try {
+      console.log(`🔄 Placing partial bid for auction ${auctionId} with amount ${fillAmount} USDC`);
+
+      // Generate escrow data
+      const escrowId = ethers.keccak256(ethers.toUtf8Bytes(`auction_${auctionId}_${Date.now()}`));
+
+      // Convert fill amount to proper units (6 decimals for USDC)
+      const fillAmountParsed = ethers.parseUnits(fillAmount, 6).toString();
+
+      const tx = await contractManager.placeBid(
+        auctionId,
+        escrowId,
+        fillAmountParsed
+      );
+
+      await tx.wait();
+
+      // Add to partial fill history
+      const newPartialFill = {
+        auctionId,
+        fillAmount,
+        fillPrice: selectedAuction?.currentPrice || '0',
+        timestamp: Date.now(),
+        txHash: tx.hash,
+        buyer: ethereumAccount
+      };
+
+      setPartialFillHistory(prev => [...prev, newPartialFill]);
+
+      // Save to localStorage
+      const savedHistory = JSON.parse(localStorage.getItem('betswap_partial_fill_history') || '[]');
+      savedHistory.push(newPartialFill);
+      localStorage.setItem('betswap_partial_fill_history', JSON.stringify(savedHistory));
+
+      console.log(`✅ Partial bid placed successfully!`);
+      console.log(`Transaction Hash: ${tx.hash}`);
+      console.log(`Fill Amount: ${fillAmount} USDC`);
+
+      alert(`✅ Partial bid placed successfully!\nFill Amount: ${fillAmount} USDC\nTransaction: ${tx.hash}`);
+
+      // Reset form and close modal
+      setPartialFillAmount('');
+      setPartialFillMode(false);
+      setShowBidModal(false);
+
+      // Reload auctions to show updated state
+      await loadAuctions();
+
+    } catch (error) {
+      console.error('❌ Failed to place partial bid:', error);
+      alert(`❌ Failed to place partial bid: ${error}`);
+    }
+  };
+
+  const getPartialFillProgress = (auctionId: number) => {
+    const auction = auctions.find(a => a.id === auctionId);
+    if (!auction) return { percentage: 0, filled: '0', remaining: '0' };
+
+    const total = BigInt(auction.filledAmount) + BigInt(auction.remainingAmount);
+    const filled = BigInt(auction.filledAmount);
+    const percentage = total > BigInt(0) ? Number((filled * BigInt(100)) / total) : 0;
+
+    return {
+      percentage,
+      filled: ethers.formatUnits(auction.filledAmount, 6),
+      remaining: ethers.formatUnits(auction.remainingAmount, 6)
+    };
+  };
+
+  const getPartialFillHistoryForAuction = (auctionId: number) => {
+    return partialFillHistory.filter(fill => fill.auctionId === auctionId);
+  };
+
+  // Load auctions when contract manager is available
+  useEffect(() => {
+    if (contractManager && ethereumAccount) {
+      loadAuctions();
+    }
+  }, [contractManager, ethereumAccount]);
+
   // Fetch AI predictions when events are loaded
   useEffect(() => {
     if (ethereumEvents.length > 0) {
@@ -907,6 +1140,22 @@ export default function BetSwapDemo() {
       fetchDynamicOdds('near');
     }
   }, [nearEvents]);
+
+  // Load partial fill history from localStorage
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedHistory = localStorage.getItem('betswap_partial_fill_history');
+      if (savedHistory) {
+        try {
+          const history = JSON.parse(savedHistory);
+          setPartialFillHistory(history);
+          console.log(`📊 Loaded ${history.length} partial fill records from localStorage`);
+        } catch (error) {
+          console.error('Error loading partial fill history:', error);
+        }
+      }
+    }
+  }, []);
 
   // Load persistent wallet connections on page load
   useEffect(() => {
@@ -1410,8 +1659,11 @@ export default function BetSwapDemo() {
     if (contractManager && ethereumAccount) {
       for (const event of ethereumEvents) {
         const endTime = parseInt(event.endTime);
-        if (endTime < currentTime && !event.resolved && !aiResolutionResults[event.id]) {
-          console.log(`🤖 Ethereum Event ${event.id} has ended, resolving with AI...`);
+        const timeUntilEnd = endTime - currentTime;
+
+        // Only resolve if event has ended (timeUntilEnd <= 0) and hasn't been resolved yet
+        if (timeUntilEnd <= 0 && !event.resolved && !aiResolutionResults[event.id]) {
+          console.log(`🤖 Ethereum Event ${event.id} has ended (${Math.abs(timeUntilEnd)}s ago), resolving with AI...`);
 
           try {
             setIsResolvingEvent(true);
@@ -1434,13 +1686,14 @@ export default function BetSwapDemo() {
             }));
 
             console.log(`✅ Ethereum Event ${event.id} resolved with AI:`, aiResult);
-            alert(`🤖 AI Resolution Complete!\nEvent: ${event.title}\nOutcome: ${aiResult.outcome ? 'Yes' : 'No'}\nConfidence: ${aiResult.confidence}%`);
 
           } catch (error) {
             console.error(`❌ Failed to resolve Ethereum event ${event.id} with AI:`, error);
           } finally {
             setIsResolvingEvent(false);
           }
+        } else if (timeUntilEnd > 0) {
+          console.log(`⏰ Ethereum Event ${event.id} ends in ${timeUntilEnd}s - not ready for resolution`);
         }
       }
     }
@@ -1449,8 +1702,11 @@ export default function BetSwapDemo() {
     if (nearAccount) {
       for (const event of nearEvents) {
         const endTime = parseInt(event.endTime);
-        if (endTime < currentTime && !event.resolved && !aiResolutionResults[event.id]) {
-          console.log(`🤖 NEAR Event ${event.id} has ended, resolving with AI...`);
+        const timeUntilEnd = endTime - currentTime;
+
+        // Only resolve if event has ended (timeUntilEnd <= 0) and hasn't been resolved yet
+        if (timeUntilEnd <= 0 && !event.resolved && !aiResolutionResults[event.id]) {
+          console.log(`🤖 NEAR Event ${event.id} has ended (${Math.abs(timeUntilEnd)}s ago), resolving with AI...`);
 
           try {
             setIsResolvingEvent(true);
@@ -1472,13 +1728,14 @@ export default function BetSwapDemo() {
             }));
 
             console.log(`✅ NEAR Event ${event.id} resolved with AI:`, aiResult);
-            alert(`🤖 NEAR AI Resolution Complete!\nEvent: ${event.title}\nOutcome: ${aiResult.outcome ? 'Yes' : 'No'}\nConfidence: ${aiResult.confidence}%`);
 
           } catch (error) {
             console.error(`❌ Failed to resolve NEAR event ${event.id} with AI:`, error);
           } finally {
             setIsResolvingEvent(false);
           }
+        } else if (timeUntilEnd > 0) {
+          console.log(`⏰ NEAR Event ${event.id} ends in ${timeUntilEnd}s - not ready for resolution`);
         }
       }
     }
@@ -2390,8 +2647,8 @@ export default function BetSwapDemo() {
                     </p>
                   </div>
                   <span className={`px-3 py-1 rounded-full text-sm font-semibold ${notification.chain === 'ethereum' ? 'bg-blue-100 text-blue-800' :
-                      notification.chain === 'near' ? 'bg-green-100 text-green-800' :
-                        'bg-purple-100 text-purple-800'
+                    notification.chain === 'near' ? 'bg-green-100 text-green-800' :
+                      'bg-purple-100 text-purple-800'
                     }`}>
                     {notification.chain === 'ethereum' ? '⚡ ETH' :
                       notification.chain === 'near' ? '🌐 NEAR' : '🔄 Cross-Chain'}
@@ -2431,6 +2688,267 @@ export default function BetSwapDemo() {
               <p className="text-gray-600 mb-4">Place some bets to start winning and see your notifications here!</p>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Dutch Auction Dashboard */}
+      {isHydrated && ethereumAccount && (
+        <div className="gradient-card rounded-2xl shadow-2xl p-8 mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent">
+                🏪 Dutch Auction Marketplace
+              </h2>
+              <p className="text-gray-600 text-sm mt-1">Dynamic pricing auctions for token trading</p>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => setShowCreateAuctionModal(true)}
+                className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                title="Create New Auction"
+              >
+                🏗️ Create Auction
+              </button>
+              <button
+                onClick={async () => {
+                  console.log('🔄 Manual refresh requested');
+                  await loadAuctions();
+                }}
+                disabled={isLoadingAuctions}
+                className="px-4 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-300"
+                title="Refresh Auctions"
+              >
+                {isLoadingAuctions ? '⏳ Loading...' : '🔄 Refresh'}
+              </button>
+              <button
+                onClick={async () => {
+                  if (contractManager) {
+                    try {
+                      const counter = await contractManager.getAuctionCounter();
+                      console.log(`📊 Current auction counter: ${counter}`);
+                      alert(`📊 Current auction counter: ${counter}`);
+                    } catch (error) {
+                      console.error('Error getting auction counter:', error);
+                      alert('❌ Error getting auction counter: ' + error);
+                    }
+                  }
+                }}
+                className="px-4 py-3 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-all duration-300"
+                title="Check Auction Counter"
+              >
+                📊 Check Counter
+              </button>
+              <button
+                onClick={() => {
+                  if (partialFillHistory.length > 0) {
+                    alert(`📋 Partial Fill History: ${partialFillHistory.length} fills recorded`);
+                  } else {
+                    alert('📋 No partial fills recorded yet');
+                  }
+                }}
+                className="px-4 py-3 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-all duration-300"
+                title="View Partial Fill History"
+              >
+                📋 Fill History ({partialFillHistory.length})
+              </button>
+            </div>
+          </div>
+
+          {isLoadingAuctions ? (
+            <div className="text-center py-8">
+              <div className="text-4xl mb-4">⏳</div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Loading Auctions</h3>
+              <p className="text-gray-600">Fetching auction data from blockchain...</p>
+            </div>
+          ) : auctions.length > 0 ? (
+            <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+              {auctions.map((auction) => (
+                <div key={auction.id} className="gradient-card rounded-xl shadow-lg p-6 card-hover">
+                  <div className="flex justify-between items-start mb-4">
+                    <div>
+                      <h3 className="text-lg font-bold text-gray-900">Auction #{auction.id}</h3>
+                      <div className="flex items-center space-x-2 mt-1">
+                        <span className="text-sm font-semibold text-purple-600">{auction.tokenSymbol}</span>
+                        <span className="text-xs text-gray-500">•</span>
+                        <span className="text-sm text-gray-600">{auction.tokenName}</span>
+                      </div>
+                      <p className="text-xs text-gray-500 mt-1">{auction.tokenDescription}</p>
+                      <p className="text-sm text-gray-600 mt-2">
+                        Seller: {auction.seller.slice(0, 6)}...{auction.seller.slice(-4)}
+                      </p>
+                    </div>
+                    <span className={`px-3 py-1 rounded-full text-sm font-semibold ${auction.active ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'
+                      }`}>
+                      {auction.active ? '🟢 Active' : auction.sold ? '✅ Sold' : '🔴 Inactive'}
+                    </span>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4">
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="font-semibold text-gray-900">Current Price</span>
+                        <span className="text-lg font-bold text-purple-600">
+                          {ethers.formatUnits(auction.currentPrice, 6)} USDC
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="font-semibold text-gray-900">Remaining Amount</span>
+                        <span className="text-lg font-bold text-blue-600">
+                          {ethers.formatUnits(auction.remainingAmount, 6)} USDC
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center mb-3">
+                        <span className="font-semibold text-gray-900">Time Remaining</span>
+                        <span className="text-lg font-bold text-orange-600">
+                          {Math.floor(auction.timeRemaining / 3600)}h {Math.floor((auction.timeRemaining % 3600) / 60)}m
+                        </span>
+                      </div>
+
+                      {/* Partial Fill Progress */}
+                      {parseFloat(ethers.formatUnits(auction.filledAmount, 6)) > 0 && (
+                        <div className="mt-4 pt-4 border-t border-gray-200">
+                          <div className="flex justify-between items-center mb-2">
+                            <span className="font-semibold text-gray-900">Fill Progress</span>
+                            <span className="text-sm font-semibold text-green-600">
+                              {getPartialFillProgress(auction.id).percentage}%
+                            </span>
+                          </div>
+                          <div className="w-full bg-gray-200 rounded-full h-2 mb-2">
+                            <div
+                              className="bg-gradient-to-r from-green-400 to-green-600 h-2 rounded-full transition-all duration-300"
+                              style={{ width: `${getPartialFillProgress(auction.id).percentage}%` }}
+                            ></div>
+                          </div>
+                          <div className="flex justify-between text-xs text-gray-600">
+                            <span>Filled: {getPartialFillProgress(auction.id).filled} USDC</span>
+                            <span>Remaining: {getPartialFillProgress(auction.id).remaining} USDC</span>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-4">
+                      <div className="flex justify-between items-center mb-2">
+                        <span className="font-semibold text-purple-800">Start Price</span>
+                        <span className="text-sm font-semibold text-purple-600">
+                          {ethers.formatUnits(auction.startAmount, 6)} USDC
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="font-semibold text-purple-800">Min Price</span>
+                        <span className="text-sm font-semibold text-purple-600">
+                          {ethers.formatUnits(auction.minAmount, 6)} USDC
+                        </span>
+                      </div>
+                    </div>
+
+                    {auction.active && auction.timeRemaining > 0 && (
+                      <button
+                        onClick={() => {
+                          setSelectedAuction(auction);
+                          setShowBidModal(true);
+                        }}
+                        className="w-full px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                      >
+                        🎯 Place Bid
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+
+          ) : (
+            <div className="text-center py-8">
+              <div className="text-4xl mb-4">🏪</div>
+              <h3 className="text-lg font-semibold text-gray-900 mb-2">Dutch Auction Contract Not Deployed</h3>
+              <p className="text-gray-600 mb-4">
+                The Dutch Auction contract needs to be deployed to Sepolia first.
+                <br />
+                <span className="text-sm text-orange-600">
+                  RPC endpoints are currently experiencing issues.
+                </span>
+              </p>
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-blue-600">ℹ️</span>
+                  <span className="text-sm text-blue-800 font-medium">Deployment Instructions</span>
+                </div>
+                <div className="text-sm text-blue-700 mt-2 space-y-1">
+                  <p>1. Ensure you have ETH in your account (0.34 ETH available)</p>
+                  <p>2. Run: <code className="bg-blue-100 px-1 rounded">npx ts-node deploy-dutch-auction-sepolia.ts</code></p>
+                  <p>3. Wait for deployment confirmation</p>
+                  <p>4. Update the contract address in the frontend</p>
+                </div>
+              </div>
+              <div className="bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-4">
+                <div className="flex items-center space-x-2">
+                  <span className="text-yellow-600">⚠️</span>
+                  <span className="text-sm text-yellow-800 font-medium">Current Status</span>
+                </div>
+                <p className="text-sm text-yellow-700 mt-1">
+                  Dutch Auction contract at address 0x0000000000000000000000000000000000000000 is not deployed.
+                  <br />
+                  <span className="text-xs">RPC endpoints are experiencing rate limiting issues.</span>
+                </p>
+              </div>
+              <button
+                onClick={() => setShowCreateAuctionModal(true)}
+                disabled={true}
+                className="px-6 py-3 bg-gray-400 text-white rounded-xl font-semibold cursor-not-allowed transition-all duration-300"
+                title="Contract not deployed"
+              >
+                🏗️ Create Auction (Disabled)
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Partial Fill History Section */}
+      {isHydrated && ethereumAccount && partialFillHistory.length > 0 && (
+        <div className="gradient-card rounded-2xl shadow-2xl p-8 mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <h2 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-blue-600 bg-clip-text text-transparent">
+              🔄 Partial Fill History
+            </h2>
+            <button
+              onClick={() => {
+                setPartialFillHistory([]);
+                localStorage.removeItem('betswap_partial_fill_history');
+              }}
+              className="px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-all duration-300"
+            >
+              🗑️ Clear History
+            </button>
+          </div>
+
+          <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4">
+            <div className="space-y-3">
+              {partialFillHistory.slice(-10).reverse().map((fill, index) => (
+                <div key={index} className="flex justify-between items-center p-3 bg-gray-50 rounded-lg hover:bg-gray-100 transition-colors">
+                  <div className="flex items-center space-x-3">
+                    <span className="text-sm font-semibold text-purple-600">Auction #{fill.auctionId}</span>
+                    <span className="text-xs text-gray-500">•</span>
+                    <span className="text-sm text-gray-600">{fill.fillAmount} USDC</span>
+                    <span className="text-xs text-gray-500">•</span>
+                    <span className="text-sm text-gray-600">{ethers.formatUnits(fill.fillPrice, 6)} USDC/unit</span>
+                    <span className="text-xs text-gray-500">•</span>
+                    <span className="text-xs text-gray-500">{fill.buyer.slice(0, 6)}...{fill.buyer.slice(-4)}</span>
+                  </div>
+                  <div className="text-xs text-gray-500">
+                    {new Date(fill.timestamp).toLocaleString()}
+                  </div>
+                </div>
+              ))}
+            </div>
+            <div className="mt-4 pt-3 border-t border-gray-200">
+              <div className="flex justify-between items-center">
+                <span className="text-sm text-gray-600">Total Partial Fills: {partialFillHistory.length}</span>
+                <span className="text-xs text-gray-500">Showing last 10 fills</span>
+              </div>
+            </div>
+          </div>
         </div>
       )}
 
@@ -2706,8 +3224,307 @@ export default function BetSwapDemo() {
             </div>
           </div>
         </div>
-      )
-      }
+      )}
+
+      {/* Create Auction Modal */}
+      {showCreateAuctionModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">🏗️ Create Dutch Auction</h3>
+              <button
+                onClick={() => setShowCreateAuctionModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Token Address
+                </label>
+                <select
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  defaultValue="0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238"
+                >
+                  <option value="0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238">
+                    USDC Token - USD Coin (Stable cryptocurrency pegged to US Dollar)
+                  </option>
+                  <option value="0x610178dA211FEF7D417bC0e6FeD39F05609AD788">
+                    Mock USDC - Mock USDC token for testing - 6 decimals
+                  </option>
+                  <option value="0x5FC8d32690cc91D4c39d9d3abcBD16989F875707">
+                    Mock USDC (Local) - Mock USDC token for local testing
+                  </option>
+                  <option value="0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9">
+                    BetSwap AI Token - BetSwap AI platform token for betting and rewards
+                  </option>
+                </select>
+                <p className="text-xs text-gray-500 mt-1">
+                  Select the token you want to auction. Each token has different properties and use cases.
+                </p>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Start Amount (USDC)
+                </label>
+                <input
+                  type="number"
+                  placeholder="1000"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Min Amount (USDC)
+                </label>
+                <input
+                  type="number"
+                  placeholder="100"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Duration (seconds)
+                </label>
+                <input
+                  type="number"
+                  placeholder="3600"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Step Time (seconds)
+                </label>
+                <input
+                  type="number"
+                  placeholder="300"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-gray-700 mb-2">
+                  Step Amount (USDC)
+                </label>
+                <input
+                  type="number"
+                  placeholder="10"
+                  className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                />
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  onClick={() => setShowCreateAuctionModal(false)}
+                  className="flex-1 px-4 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-all duration-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      // Get form values (simplified for demo)
+                      const tokenAddress = "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238";
+                      const startAmount = "1000000000"; // 1000 USDC in wei
+                      const minAmount = "100000000"; // 100 USDC in wei
+                      const duration = 3600; // 1 hour
+                      const stepTime = 300; // 5 minutes
+                      const stepAmount = "10000000"; // 10 USDC in wei
+
+                      console.log('🏗️ Creating auction with parameters:', {
+                        tokenAddress,
+                        startAmount,
+                        minAmount,
+                        duration,
+                        stepTime,
+                        stepAmount
+                      });
+
+                      const tx = await contractManager?.createAuction(
+                        tokenAddress,
+                        startAmount,
+                        minAmount,
+                        duration,
+                        stepTime,
+                        stepAmount
+                      );
+
+                      console.log('📝 Auction creation transaction:', tx);
+                      await tx?.wait();
+                      console.log('✅ Auction creation transaction confirmed');
+
+                      alert('✅ Auction created successfully!');
+                      setShowCreateAuctionModal(false);
+
+                      // Wait a moment for blockchain state to update
+                      setTimeout(async () => {
+                        console.log('🔄 Reloading auctions after creation...');
+                        await loadAuctions();
+                      }, 2000);
+                    } catch (error) {
+                      console.error('Error creating auction:', error);
+                      alert('❌ Failed to create auction: ' + error);
+                    }
+                  }}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300"
+                >
+                  Create Auction
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Place Bid Modal */}
+      {showBidModal && selectedAuction && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full mx-4 max-h-[90vh] overflow-y-auto">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-bold text-gray-900">🎯 Place Bid</h3>
+              <button
+                onClick={() => setShowBidModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="bg-gradient-to-r from-purple-50 to-pink-50 border border-purple-200 rounded-xl p-4">
+                <h4 className="font-semibold text-purple-800 mb-2">Auction #{selectedAuction.id}</h4>
+                <div className="flex items-center space-x-2 mb-3">
+                  <span className="text-sm font-semibold text-purple-600">{selectedAuction.tokenSymbol}</span>
+                  <span className="text-xs text-gray-500">•</span>
+                  <span className="text-sm text-gray-600">{selectedAuction.tokenName}</span>
+                </div>
+                <p className="text-xs text-gray-500 mb-3">{selectedAuction.tokenDescription}</p>
+                <div className="space-y-2 text-sm">
+                  <div className="flex justify-between">
+                    <span>Current Price:</span>
+                    <span className="font-semibold">{ethers.formatUnits(selectedAuction.currentPrice, 6)} USDC</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Remaining:</span>
+                    <span className="font-semibold">{ethers.formatUnits(selectedAuction.remainingAmount, 6)} USDC</span>
+                  </div>
+                  <div className="flex justify-between">
+                    <span>Time Left:</span>
+                    <span className="font-semibold">
+                      {Math.floor(selectedAuction.timeRemaining / 3600)}h {Math.floor((selectedAuction.timeRemaining % 3600) / 60)}m
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              <div className="space-y-4">
+                {/* Partial Fill Toggle */}
+                <div className="flex items-center space-x-3">
+                  <input
+                    type="checkbox"
+                    id="partialFillMode"
+                    checked={partialFillMode}
+                    onChange={(e) => setPartialFillMode(e.target.checked)}
+                    className="w-4 h-4 text-purple-600 bg-gray-100 border-gray-300 rounded focus:ring-purple-500 focus:ring-2"
+                  />
+                  <label htmlFor="partialFillMode" className="text-sm font-medium text-gray-700">
+                    🔄 Enable Partial Fill Mode
+                  </label>
+                </div>
+
+                {partialFillMode && (
+                  <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                    <div className="flex items-center space-x-2 mb-2">
+                      <span className="text-blue-600">ℹ️</span>
+                      <span className="text-sm font-medium text-blue-800">Partial Fill Benefits</span>
+                    </div>
+                    <ul className="text-xs text-blue-700 space-y-1">
+                      <li>• Fill only a portion of the remaining amount</li>
+                      <li>• Reduce slippage and price impact</li>
+                      <li>• More flexible order management</li>
+                      <li>• Better execution for large orders</li>
+                    </ul>
+                  </div>
+                )}
+
+                <div>
+                  <label className="block text-sm font-medium text-gray-700 mb-2">
+                    {partialFillMode ? 'Partial Fill Amount (USDC)' : 'Bid Amount (USDC)'}
+                  </label>
+                  <input
+                    type="number"
+                    placeholder={partialFillMode ? "50" : "100"}
+                    value={partialFillAmount}
+                    onChange={(e) => setPartialFillAmount(e.target.value)}
+                    className="w-full px-4 py-3 border border-gray-300 rounded-lg focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  />
+                  {partialFillMode && (
+                    <p className="text-xs text-gray-500 mt-1">
+                      Max available: {ethers.formatUnits(selectedAuction.remainingAmount, 6)} USDC
+                    </p>
+                  )}
+                </div>
+              </div>
+
+              <div className="flex space-x-3 pt-4">
+                <button
+                  onClick={() => setShowBidModal(false)}
+                  className="flex-1 px-4 py-3 bg-gray-500 text-white rounded-lg hover:bg-gray-600 transition-all duration-300"
+                >
+                  Cancel
+                </button>
+                <button
+                  onClick={async () => {
+                    try {
+                      if (partialFillMode && !partialFillAmount) {
+                        alert('❌ Please enter a partial fill amount');
+                        return;
+                      }
+
+                      if (partialFillMode) {
+                        // Place partial fill
+                        await placePartialBid(selectedAuction.id, partialFillAmount);
+                      } else {
+                        // Place full bid (existing logic)
+                        const escrowId = ethers.keccak256(ethers.toUtf8Bytes(`auction_${selectedAuction.id}_${Date.now()}`));
+                        const bidAmount = partialFillAmount || "100"; // Use entered amount or default to 100
+
+                        const tx = await contractManager?.placeBid(
+                          selectedAuction.id,
+                          escrowId,
+                          ethers.parseUnits(bidAmount, 6).toString()
+                        );
+
+                        await tx?.wait();
+                        alert('✅ Bid placed successfully!');
+                        setShowBidModal(false);
+                        setPartialFillAmount('');
+                        setPartialFillMode(false);
+                        loadAuctions();
+                      }
+                    } catch (error) {
+                      console.error('Error placing bid:', error);
+                      alert('❌ Failed to place bid: ' + error);
+                    }
+                  }}
+                  className="flex-1 px-4 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-lg hover:from-purple-600 hover:to-pink-600 transition-all duration-300"
+                >
+                  {partialFillMode ? '🔄 Place Partial Fill' : '🎯 Place Bid'}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

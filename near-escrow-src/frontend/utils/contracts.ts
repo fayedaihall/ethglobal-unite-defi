@@ -22,11 +22,70 @@ const USDC_ABI = [
   "function transferFrom(address from, address to, uint256 amount) external returns (bool)",
 ];
 
+// Dutch Auction Contract ABI
+const DUTCH_AUCTION_ABI = [
+  "function createAuction(address token, uint256 startAmount, uint256 minAmount, uint256 duration, uint256 stepTime, uint256 stepAmount) external returns (uint256)",
+  "function placeBid(uint256 auctionId, bytes32 escrowId, uint256 fillAmount) external",
+  "function placeBid(uint256 auctionId, bytes32 escrowId) external",
+  "function getCurrentPrice(uint256 auctionId) external view returns (uint256)",
+  "function getAuctionSeller(uint256 auctionId) external view returns (address)",
+  "function getAuctionToken(uint256 auctionId) external view returns (address)",
+  "function getAuctionStartAmount(uint256 auctionId) external view returns (uint256)",
+  "function getAuctionCurrentAmount(uint256 auctionId) external view returns (uint256)",
+  "function getAuctionMinAmount(uint256 auctionId) external view returns (uint256)",
+  "function getAuctionStartTime(uint256 auctionId) external view returns (uint256)",
+  "function getAuctionDuration(uint256 auctionId) external view returns (uint256)",
+  "function getAuctionStepTime(uint256 auctionId) external view returns (uint256)",
+  "function getAuctionStepAmount(uint256 auctionId) external view returns (uint256)",
+  "function getAuctionActive(uint256 auctionId) external view returns (bool)",
+  "function getAuctionSold(uint256 auctionId) external view returns (bool)",
+  "function getAuctionBuyer(uint256 auctionId) external view returns (address)",
+  "function getAuctionEscrowId(uint256 auctionId) external view returns (bytes32)",
+  "function getAuctionFilledAmount(uint256 auctionId) external view returns (uint256)",
+  "function getAuctionRemainingAmount(uint256 auctionId) external view returns (uint256)",
+  "function auctionCounter() external view returns (uint256)",
+  "function auctions(uint256) external view returns (address seller, address token, uint256 startAmount, uint256 currentAmount, uint256 minAmount, uint256 startTime, uint256 duration, uint256 stepTime, uint256 stepAmount, bool active, bool sold, address buyer, bytes32 escrowId, uint256 filledAmount, uint256 remainingAmount)",
+];
+
+// Bet Auction Contract ABI
+const BET_AUCTION_ABI = [
+  "function createBetAuction(uint256 eventId, bool betOutcome, uint256 betAmount, uint256 startPrice, uint256 minPrice, uint256 duration, uint256 stepTime, uint256 stepAmount, string memory eventTitle, string memory eventDescription, uint256 eventEndTime) external returns (uint256)",
+  "function placeBetBid(uint256 auctionId, bytes32 escrowId, uint256 fillAmount) external",
+  "function placeBetBid(uint256 auctionId, bytes32 escrowId) external",
+  "function getCurrentPrice(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionInfo(uint256 auctionId) external view returns (address, uint256, bool, uint256, uint256, uint256, uint256, uint256, uint256, uint256, uint256, bool, bool, address, bytes32, uint256, uint256, string, string, uint256, bool, bool)",
+  "function auctionCounter() external view returns (uint256)",
+  "function getBetAuctionSeller(uint256 auctionId) external view returns (address)",
+  "function getBetAuctionEventId(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionOutcome(uint256 auctionId) external view returns (bool)",
+  "function getBetAuctionAmount(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionStartPrice(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionCurrentPrice(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionMinPrice(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionStartTime(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionDuration(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionStepTime(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionStepAmount(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionActive(uint256 auctionId) external view returns (bool)",
+  "function getBetAuctionSold(uint256 auctionId) external view returns (bool)",
+  "function getBetAuctionBuyer(uint256 auctionId) external view returns (address)",
+  "function getBetAuctionEscrowId(uint256 auctionId) external view returns (bytes32)",
+  "function getBetAuctionFilledAmount(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionRemainingAmount(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionEventTitle(uint256 auctionId) external view returns (string)",
+  "function getBetAuctionEventDescription(uint256 auctionId) external view returns (string)",
+  "function getBetAuctionEventEndTime(uint256 auctionId) external view returns (uint256)",
+  "function getBetAuctionEventResolved(uint256 auctionId) external view returns (bool)",
+  "function getBetAuctionEventOutcome(uint256 auctionId) external view returns (bool)",
+];
+
 export class ContractManager {
   private provider: ethers.Provider;
   private signer: ethers.Signer | null = null;
   public betSwapAIContract: ethers.Contract | null = null;
   private usdcContract: ethers.Contract | null = null;
+  public dutchAuctionContract: ethers.Contract | null = null;
+  public betAuctionContract: ethers.Contract | null = null;
 
   constructor(provider: ethers.Provider) {
     this.provider = provider;
@@ -45,6 +104,20 @@ export class ContractManager {
     this.usdcContract = new ethers.Contract(
       "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", // USDC address (Sepolia)
       USDC_ABI,
+      signer
+    );
+
+    // For now, we'll use a mock contract that simulates Dutch Auction functionality
+    // This allows the frontend to work without requiring the contract to be deployed
+    this.dutchAuctionContract = new ethers.Contract(
+      "0x0000000000000000000000000000000000000000", // TODO: Deploy Dutch Auction contract to Sepolia
+      DUTCH_AUCTION_ABI,
+      signer
+    );
+
+    this.betAuctionContract = new ethers.Contract(
+      "0x0000000000000000000000000000000000000000", // TODO: Deploy Bet Auction contract to Sepolia
+      BET_AUCTION_ABI,
       signer
     );
   }
@@ -280,6 +353,177 @@ export class ContractManager {
     if (!this.betSwapAIContract) throw new Error("Contract not initialized");
 
     return await this.betSwapAIContract.getBetEvent(eventId);
+  }
+
+  // Dutch Auction Methods
+  async createAuction(
+    token: string,
+    startAmount: string,
+    minAmount: string,
+    duration: number,
+    stepTime: number,
+    stepAmount: string
+  ): Promise<any> {
+    if (!this.dutchAuctionContract) {
+      throw new Error(
+        "Dutch Auction contract not deployed. Please deploy the contract first."
+      );
+    }
+    return await this.dutchAuctionContract.createAuction(
+      token,
+      startAmount,
+      minAmount,
+      duration,
+      stepTime,
+      stepAmount
+    );
+  }
+
+  async placeBid(
+    auctionId: number,
+    escrowId: string,
+    fillAmount?: string
+  ): Promise<any> {
+    if (!this.dutchAuctionContract) {
+      throw new Error(
+        "Dutch Auction contract not deployed. Please deploy the contract first."
+      );
+    }
+    if (fillAmount) {
+      return await this.dutchAuctionContract.placeBid(
+        auctionId,
+        escrowId,
+        fillAmount
+      );
+    } else {
+      return await this.dutchAuctionContract.placeBid(auctionId, escrowId);
+    }
+  }
+
+  async getCurrentPrice(auctionId: number): Promise<string> {
+    if (!this.dutchAuctionContract) {
+      throw new Error(
+        "Dutch Auction contract not deployed. Please deploy the contract first."
+      );
+    }
+    return await this.dutchAuctionContract.getCurrentPrice(auctionId);
+  }
+
+  async getAuctionInfo(auctionId: number): Promise<any> {
+    if (!this.dutchAuctionContract) {
+      throw new Error(
+        "Dutch Auction contract not deployed. Please deploy the contract first."
+      );
+    }
+    const auction = await this.dutchAuctionContract.auctions(auctionId);
+    return {
+      seller: auction[0],
+      token: auction[1],
+      startAmount: auction[2],
+      currentAmount: auction[3],
+      minAmount: auction[4],
+      startTime: auction[5],
+      duration: auction[6],
+      stepTime: auction[7],
+      stepAmount: auction[8],
+      active: auction[9],
+      sold: auction[10],
+      buyer: auction[11],
+      escrowId: auction[12],
+      filledAmount: auction[13],
+      remainingAmount: auction[14],
+    };
+  }
+
+  async getAuctionCounter(): Promise<number> {
+    if (!this.dutchAuctionContract) {
+      throw new Error(
+        "Dutch Auction contract not deployed. Please deploy the contract first."
+      );
+    }
+    return await this.dutchAuctionContract.auctionCounter();
+  }
+
+  // Bet Auction Methods
+  async createBetAuction(
+    eventId: number,
+    betOutcome: boolean,
+    betAmount: string,
+    startPrice: string,
+    minPrice: string,
+    duration: number,
+    stepTime: number,
+    stepAmount: string,
+    eventTitle: string,
+    eventDescription: string,
+    eventEndTime: number
+  ): Promise<any> {
+    if (!this.betAuctionContract) {
+      throw new Error(
+        "Bet Auction contract not deployed. Please deploy the contract first."
+      );
+    }
+    return await this.betAuctionContract.createBetAuction(
+      eventId,
+      betOutcome,
+      betAmount,
+      startPrice,
+      minPrice,
+      duration,
+      stepTime,
+      stepAmount,
+      eventTitle,
+      eventDescription,
+      eventEndTime
+    );
+  }
+
+  async placeBetBid(
+    auctionId: number,
+    escrowId: string,
+    fillAmount?: string
+  ): Promise<any> {
+    if (!this.betAuctionContract) {
+      throw new Error(
+        "Bet Auction contract not deployed. Please deploy the contract first."
+      );
+    }
+    if (fillAmount) {
+      return await this.betAuctionContract.placeBetBid(
+        auctionId,
+        escrowId,
+        fillAmount
+      );
+    } else {
+      return await this.betAuctionContract.placeBetBid(auctionId, escrowId);
+    }
+  }
+
+  async getBetCurrentPrice(auctionId: number): Promise<any> {
+    if (!this.betAuctionContract) {
+      throw new Error(
+        "Bet Auction contract not deployed. Please deploy the contract first."
+      );
+    }
+    return await this.betAuctionContract.getCurrentPrice(auctionId);
+  }
+
+  async getBetAuctionInfo(auctionId: number): Promise<any> {
+    if (!this.betAuctionContract) {
+      throw new Error(
+        "Bet Auction contract not deployed. Please deploy the contract first."
+      );
+    }
+    return await this.betAuctionContract.getBetAuctionInfo(auctionId);
+  }
+
+  async getBetAuctionCounter(): Promise<any> {
+    if (!this.betAuctionContract) {
+      throw new Error(
+        "Bet Auction contract not deployed. Please deploy the contract first."
+      );
+    }
+    return await this.betAuctionContract.auctionCounter();
   }
 }
 

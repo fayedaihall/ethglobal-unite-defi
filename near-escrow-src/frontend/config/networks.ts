@@ -14,6 +14,8 @@ export const NETWORKS = {
         betSwapAI: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
         usdc: "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238",
         htlc: "0x4A679253410272dd5232B3Ff7cF5dbB88f295319",
+        dutchAuction: "0x998abeb3E57409262aE5b751f60747921B33613E",
+        betAuction: "0x0000000000000000000000000000000000000000", // TODO: Deploy BetAuction contract
       },
     },
   },
