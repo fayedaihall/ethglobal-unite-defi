@@ -13,32 +13,19 @@ const BETSWAP_AI_ABI = [
   "function calculatePotentialPayout(bytes32 eventId, uint256 amount, bool outcome) external view returns (uint256)",
 ];
 
-// BetToken Contract ABI (updated for dynamic odds)
-const BET_TOKEN_ABI = [
-  "function balanceOf(address owner) external view returns (uint256)",
-  "function approve(address spender, uint256 amount) external returns (bool)",
-  "function allowance(address owner, address spender) external view returns (uint256)",
-  "function transfer(address to, uint256 amount) external returns (bool)",
-  "function placeBet(bytes32 eventId, uint256 amount, bool outcome) external",
-  "function calculateOdds(bytes32 eventId) external view returns (uint256 yesOdds, uint256 noOdds)",
-  "function getCurrentOdds(bytes32 eventId, bool outcome) external view returns (uint256)",
-  "function getBettingStats(bytes32 eventId) external view returns (uint256 total, uint256 yes, uint256 no, uint256 yesOdds, uint256 noOdds)",
-  "function calculatePotentialPayout(bytes32 eventId, uint256 amount, bool outcome) external view returns (uint256)",
-  "function getEventInfo(bytes32 eventId) external view returns (bool exists, bool resolved, bool outcome, uint256 totalBetAmount, uint256 yesBetAmount, uint256 noBetAmount)",
-];
-
-// USDC Contract ABI (simplified for demo)
+// USDC Contract ABI (updated for full functionality)
 const USDC_ABI = [
   "function balanceOf(address owner) external view returns (uint256)",
   "function approve(address spender, uint256 amount) external returns (bool)",
   "function allowance(address owner, address spender) external view returns (uint256)",
   "function transfer(address to, uint256 amount) external returns (bool)",
+  "function transferFrom(address from, address to, uint256 amount) external returns (bool)",
 ];
 
 export class ContractManager {
   private provider: ethers.Provider;
   private signer: ethers.Signer | null = null;
-  private betSwapAIContract: ethers.Contract | null = null;
+  public betSwapAIContract: ethers.Contract | null = null;
   private usdcContract: ethers.Contract | null = null;
 
   constructor(provider: ethers.Provider) {
@@ -50,33 +37,80 @@ export class ContractManager {
 
     // Initialize contracts with USDC instead of BET token
     this.betSwapAIContract = new ethers.Contract(
-      "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512", // BetSwap AI address
+      "0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9", // BetSwap AI address (Local)
       BETSWAP_AI_ABI,
       signer
     );
 
     this.usdcContract = new ethers.Contract(
-      "0xf5059a5D33d5853360D16C683c16e67980206f36", // USDC address
+      "0x1c7D4B196Cb0C7B01d743Fbc6116a902379C7238", // USDC address (Sepolia)
       USDC_ABI,
       signer
     );
   }
 
   async getUsdcBalance(account: string): Promise<string> {
-    if (!this.usdcContract) throw new Error('Contract not initialized');
+    if (!this.usdcContract) throw new Error("Contract not initialized");
     try {
-      const balance = await this.usdcContract.balanceOf(account);
-      const formattedBalance = ethers.formatUnits(balance, 6); // USDC has 6 decimals
-      
-      // For demo purposes, show higher balance for the funded account
-      if (account.toLowerCase() === '0x3aa1fe004111a6ea3180ccf557d8260f36b717d1') {
-        return '10000.00'; // Show 10,000 USDC for the funded account
+      console.log(`🔍 Checking USDC balance for account: ${account}`);
+      console.log(`🏦 USDC Contract: ${await this.usdcContract.getAddress()}`);
+
+      // Debug provider and network info
+      const network = await this.provider.getNetwork();
+      console.log(`🌐 Network: ${network.name} (Chain ID: ${network.chainId})`);
+
+      // Check if we're on the right network (Sepolia = 11155111)
+      if (network.chainId !== BigInt(11155111)) {
+        console.log(
+          `⚠️ Warning: Not on Sepolia network! Current: ${network.name} (${network.chainId})`
+        );
       }
-      
+
+      console.log(`📞 Calling balanceOf for account: ${account}`);
+
+      // Add more detailed error handling
+      let balance;
+      try {
+        // Try using the provider directly first
+        console.log(`🔧 Trying direct provider call...`);
+        const data = this.usdcContract.interface.encodeFunctionData(
+          "balanceOf",
+          [account]
+        );
+        console.log(`📦 Encoded data: ${data}`);
+
+        const result = await this.provider.call({
+          to: await this.usdcContract.getAddress(),
+          data: data,
+        });
+        console.log(`📦 Raw result: ${result}`);
+
+        if (result === "0x") {
+          console.log(`⚠️ Empty result, trying contract method...`);
+          balance = await this.usdcContract.balanceOf(account);
+        } else {
+          balance = this.usdcContract.interface.decodeFunctionResult(
+            "balanceOf",
+            result
+          )[0];
+        }
+
+        console.log(`✅ balanceOf call successful`);
+      } catch (balanceError) {
+        console.error(`❌ balanceOf call failed:`, balanceError);
+        throw balanceError;
+      }
+
+      const formattedBalance = ethers.formatUnits(balance, 6); // USDC has 6 decimals
+
+      console.log(`💰 Raw balance: ${balance.toString()}`);
+      console.log(`💰 Formatted balance: ${formattedBalance} USDC`);
+
+      // Return the actual balance from the contract
       return formattedBalance;
     } catch (error) {
-      console.error('Error getting USDC balance:', error);
-      return '0';
+      console.error("Error getting USDC balance:", error);
+      return "0";
     }
   }
 
@@ -93,27 +127,35 @@ export class ContractManager {
     }
   }
 
-  async getDynamicOdds(eventId: string): Promise<{ yesOdds: number; noOdds: number }> {
+  async getDynamicOdds(
+    eventId: string
+  ): Promise<{ yesOdds: number; noOdds: number }> {
     if (!this.betSwapAIContract) throw new Error("Contract not initialized");
 
     try {
       // For demo purposes, simulate dynamic odds based on betting volume
       const baseOdds = 150; // 1.50x base odds
       const volatility = Math.random() * 100; // Random volatility
-      
+
       // Simulate market sentiment (more bets on one side = lower odds for that side)
       const yesBets = Math.floor(Math.random() * 1000) + 100;
       const noBets = Math.floor(Math.random() * 1000) + 100;
       const totalBets = yesBets + noBets;
-      
+
       const yesProbability = yesBets / totalBets;
       const noProbability = noBets / totalBets;
-      
+
       // Calculate odds with house edge (0.5%)
       const houseEdge = 0.995;
-      const yesOdds = Math.max(100, Math.min(1000, Math.floor((1 / yesProbability) * houseEdge * 100)));
-      const noOdds = Math.max(100, Math.min(1000, Math.floor((1 / noProbability) * houseEdge * 100)));
-      
+      const yesOdds = Math.max(
+        100,
+        Math.min(1000, Math.floor((1 / yesProbability) * houseEdge * 100))
+      );
+      const noOdds = Math.max(
+        100,
+        Math.min(1000, Math.floor((1 / noProbability) * houseEdge * 100))
+      );
+
       return { yesOdds, noOdds };
     } catch (error) {
       console.error("Error getting dynamic odds:", error);
@@ -135,9 +177,9 @@ export class ContractManager {
       const total = Math.floor(Math.random() * 10000) + 1000;
       const yes = Math.floor(Math.random() * total);
       const no = total - yes;
-      
+
       const { yesOdds, noOdds } = await this.getDynamicOdds(eventId);
-      
+
       return {
         total,
         yes,
@@ -157,7 +199,11 @@ export class ContractManager {
     }
   }
 
-  async calculatePotentialPayout(eventId: string, amount: string, outcome: boolean): Promise<string> {
+  async calculatePotentialPayout(
+    eventId: string,
+    amount: string,
+    outcome: boolean
+  ): Promise<string> {
     if (!this.betSwapAIContract) throw new Error("Contract not initialized");
 
     try {
@@ -165,7 +211,7 @@ export class ContractManager {
       const odds = outcome ? yesOdds : noOdds;
       const amountNum = parseFloat(amount);
       const payout = (amountNum * odds) / 100;
-      
+
       return payout.toFixed(2);
     } catch (error) {
       console.error("Error calculating potential payout:", error);

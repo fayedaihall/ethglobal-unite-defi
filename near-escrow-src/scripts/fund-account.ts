@@ -5,20 +5,20 @@ dotenv.config();
 
 async function fundAccount() {
   const provider = new ethers.JsonRpcProvider(process.env.ETH_RPC);
-  
+
   // Address that needs funding
-  const targetAddress = "0x617206eb31554a759eDec3d644b88C6892a0343D";
-  
+  const targetAddress = "0x62482a678d5F8D6D789654040E6BB8077215CCa8";
+
   // Amount to send (0.1 ETH should be plenty for testing)
   const amount = ethers.parseEther("0.1");
-  
+
   console.log(`Target address: ${targetAddress}`);
   console.log(`Amount to send: ${ethers.formatEther(amount)} ETH`);
-  
+
   // Check current balance
   const currentBalance = await provider.getBalance(targetAddress);
   console.log(`Current balance: ${ethers.formatEther(currentBalance)} ETH`);
-  
+
   // If you have a funded account, uncomment and use this:
   /*
   const FUNDED_PRIVATE_KEY = "your_funded_account_private_key_here";
@@ -38,7 +38,7 @@ async function fundAccount() {
   const newBalance = await provider.getBalance(targetAddress);
   console.log(`New balance: ${ethers.formatEther(newBalance)} ETH`);
   */
-  
+
   console.log("\n=== Instructions ===");
   console.log("1. Visit https://sepoliafaucet.com/");
   console.log(`2. Enter address: ${targetAddress}`);

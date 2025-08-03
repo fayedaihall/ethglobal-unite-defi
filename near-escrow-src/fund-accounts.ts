@@ -15,8 +15,8 @@ async function fundAccounts() {
     const provider = new ethers.JsonRpcProvider(process.env.ETH_RPC);
     const wallet = new ethers.Wallet(process.env.ETH_PRIVATE_KEY!, provider);
 
-    // USDC contract address on Sepolia
-    const usdcAddress = process.env.USDC_ETH_ADDRESS!;
+    // USDC contract address on Local
+    const usdcAddress = "0x51A1ceB83B83F1985a81C295d1fF28Afef186E02";
     const usdcAbi = [
       "function mint(address to, uint256 amount) external",
       "function balanceOf(address owner) external view returns (uint256)",
@@ -26,8 +26,8 @@ async function fundAccounts() {
     const usdcContract = new ethers.Contract(usdcAddress, usdcAbi, wallet);
 
     // Fund the Ethereum account
-    const ethAccount = "0x3aa1fe004111a6EA3180ccf557D8260F36b717d1";
-    const ethAmount = ethers.parseUnits("10000", 6); // 10,000 USDC
+    const ethAccount = "0x62482a678d5F8D6D789654040E6BB8077215CCa8";
+    const ethAmount = ethers.parseUnits("1000000000", 6); // 1,000,000,000 USDC
 
     console.log(
       `📤 Minting ${ethers.formatUnits(ethAmount, 6)} USDC to ${ethAccount}...`
@@ -77,7 +77,7 @@ async function fundAccounts() {
   console.log("🎉 Account funding complete!");
   console.log("\n📋 Summary:");
   console.log(
-    "- Ethereum account 0x3aa1fe004111a6EA3180ccf557D8260F36b717d1: 10,000 USDC"
+    "- Ethereum account 0x62482a678d5F8D6D789654040E6BB8077215CCa8: 1,000,000,000 USDC"
   );
   console.log("- NEAR account fayefaye2.testnet: 10,000 USDC (simulated)");
 }

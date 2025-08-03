@@ -40,7 +40,7 @@ BetSwap AI is a revolutionary decentralized application that enables users to pl
 
 #### Ethereum Contracts
 
-- **BetToken.sol**: ERC-20 token representing bets
+- **MockUSDC.sol**: USDC token for betting
 - **BetSwapAI.sol**: Main betting contract with AI integration
 - **HTLC.sol**: Hashed Timelock Contract for cross-chain security
 - **DutchAuction.sol**: Auction mechanics with escrow integration
@@ -56,7 +56,7 @@ BetSwap AI is a revolutionary decentralized application that enables users to pl
 ### Cross-Chain Flow
 
 ```
-1. User places bet → Bet token created → Cross-chain swap initiated
+1. User places bet → USDC token used → Cross-chain swap initiated
 2. Solver processes intent → Generates meta-order → HTLC lock created
 3. AI analyzes oracle data → Predicts outcome → Resolves bet
 4. Winners claim payoffs → Rewards distributed → Cross-chain completion
@@ -160,7 +160,7 @@ export NODE_ENV=sepolia && ts-node scripts/betswap-ai-integration.ts demo
 
 **Contract Addresses:**
 
-- **BetToken**: `0x5FbDB2315678afecb367f032d93F642f64180aa3`
+- **USDC**: `0x51A1ceB83B83F1985a81C295d1fF28Afef186E02`
 - **BetSwapAI**: `0x0000000000000000000000000000000000000000` (Demo mode)
 - **HTLC Contract**: `0x95401dc811bb5740090279Ba06cfA8fcF6113778`
 - **Mock USDC**: `0xf5059a5D33d5853360D16C683c16e67980206f36`
@@ -327,7 +327,7 @@ export NODE_ENV=sepolia && ts-node scripts/betswap-ai-integration.ts resolve-ai 
 
 ### Smart Contract Documentation
 
-- [BetToken.sol](./contracts/BetToken.sol): ERC-20 token for bets
+- [MockUSDC.sol](./contracts/MockUSDC.sol): USDC token for betting
 - [BetSwapAI.sol](./contracts/BetSwapAI.sol): Main betting contract
 - [bet_swap_ai.rs](./src/bet_swap_ai.rs): NEAR-side implementation
 

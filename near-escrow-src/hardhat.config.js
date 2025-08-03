@@ -29,6 +29,13 @@ const config: HardhatUserConfig = {
         "0xac0974bec39a17e36ba4a6b4d238ff944bacb478cbed5efcae784d7bf4f2ff80",
       ],
     },
+    sepolia: {
+      url: process.env.ETH_RPC || "https://1rpc.io/sepolia",
+      chainId: 11155111,
+      accounts: process.env.ETH_PRIVATE_KEY
+        ? [process.env.ETH_PRIVATE_KEY]
+        : [],
+    },
   },
 };
 

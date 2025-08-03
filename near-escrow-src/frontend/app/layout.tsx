@@ -13,7 +13,9 @@ if (typeof window !== 'undefined') {
     const errorMessage = args.join(' ');
     if (errorMessage.includes('chrome.runtime.sendMessage') ||
       errorMessage.includes('Extension ID') ||
-      errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama')) {
+      errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama') ||
+      errorMessage.includes('Runtime TypeError') ||
+      errorMessage.includes('chrome-extension://')) {
       console.log('Chrome extension error suppressed:', errorMessage);
       return;
     }
@@ -26,7 +28,9 @@ if (typeof window !== 'undefined') {
     const errorMessage = message?.toString() || '';
     if (errorMessage.includes('chrome.runtime.sendMessage') ||
       errorMessage.includes('Extension ID') ||
-      errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama')) {
+      errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama') ||
+      errorMessage.includes('Runtime TypeError') ||
+      errorMessage.includes('chrome-extension://')) {
       console.log('Chrome extension error suppressed in onerror:', errorMessage);
       return true; // Prevent default error handling
     }
@@ -41,7 +45,9 @@ if (typeof window !== 'undefined') {
     const errorMessage = event.reason?.message || event.reason || '';
     if (errorMessage.includes('chrome.runtime.sendMessage') ||
       errorMessage.includes('Extension ID') ||
-      errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama')) {
+      errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama') ||
+      errorMessage.includes('Runtime TypeError') ||
+      errorMessage.includes('chrome-extension://')) {
       console.log('Chrome extension promise rejection suppressed:', errorMessage);
       event.preventDefault();
       return;
@@ -53,7 +59,9 @@ if (typeof window !== 'undefined') {
     const errorMessage = event.message || event.error?.message || '';
     if (errorMessage.includes('chrome.runtime.sendMessage') ||
       errorMessage.includes('Extension ID') ||
-      errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama')) {
+      errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama') ||
+      errorMessage.includes('Runtime TypeError') ||
+      errorMessage.includes('chrome-extension://')) {
       console.log('Chrome extension global error suppressed:', errorMessage);
       event.preventDefault();
       return;
@@ -68,7 +76,9 @@ if (typeof window !== 'undefined') {
         const errorMessage = error.message || '';
         if (errorMessage.includes('chrome.runtime.sendMessage') ||
           errorMessage.includes('Extension ID') ||
-          errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama')) {
+          errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama') ||
+          errorMessage.includes('Runtime TypeError') ||
+          errorMessage.includes('chrome-extension://')) {
           console.log('Chrome extension fetch error suppressed:', errorMessage);
           return Promise.resolve(new Response('', { status: 200 }));
         }

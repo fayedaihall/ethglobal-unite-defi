@@ -39,7 +39,7 @@ interface AIPredictionData {
 class BetSwapAIIntegration {
   private provider: ethers.JsonRpcProvider;
   private wallet: ethers.Wallet;
-  private betTokenContract: ethers.Contract;
+  private usdcContract: ethers.Contract;
   private betSwapAIContract: ethers.Contract;
   private htlcContract: ethers.Contract;
   private dutchAuctionContract: ethers.Contract;
@@ -57,35 +57,31 @@ class BetSwapAIIntegration {
 
     this.wallet = new ethers.Wallet(privateKey, this.provider);
 
-    const betTokenAddress = process.env.BET_TOKEN_ETH_ADDRESS;
+    const usdcAddress = process.env.USDC_ETH_ADDRESS;
     const betSwapAIAddress = process.env.BETSWAP_AI_ETH_ADDRESS;
     const htlcAddress = process.env.HTLC_ETH_ADDRESS;
     const dutchAuctionAddress = process.env.DUTCH_AUCTION_ETH_ADDRESS;
     const solverAddress = process.env.SHADE_AGENT_SOLVER_ETH_ADDRESS;
 
     if (
-      !betTokenAddress ||
+      !usdcAddress ||
       !betSwapAIAddress ||
       !htlcAddress ||
       !dutchAuctionAddress ||
       !solverAddress
     ) {
       throw new Error(
-        "BET_TOKEN_ETH_ADDRESS, BETSWAP_AI_ETH_ADDRESS, HTLC_ETH_ADDRESS, DUTCH_AUCTION_ETH_ADDRESS, and SHADE_AGENT_SOLVER_ETH_ADDRESS must be set in .env"
+        "USDC_ETH_ADDRESS, BETSWAP_AI_ETH_ADDRESS, HTLC_ETH_ADDRESS, DUTCH_AUCTION_ETH_ADDRESS, and SHADE_AGENT_SOLVER_ETH_ADDRESS must be set in .env"
       );
     }
 
-    this.betTokenContract = new ethers.Contract(
-      betTokenAddress,
+    this.usdcContract = new ethers.Contract(
+      usdcAddress,
       [
         "function balanceOf(address) view returns(uint256)",
         "function approve(address,uint256) returns(bool)",
         "function transferFrom(address,address,uint256) returns(bool)",
-        "function createBetEvent(bytes32,string,uint256)",
-        "function placeBet(bytes32,uint256,bool)",
-        "function getEventInfo(bytes32) view returns(string,uint256,bool,bool,uint256)",
-        "function getUserBet(bytes32,address) view returns(uint256)",
-        "function getUserRewards(address) view returns(uint256)",
+        "function mint(address,uint256)",
       ],
       this.wallet
     );
@@ -224,14 +220,12 @@ class BetSwapAIIntegration {
     console.log(`💰 Placing bet on event: ${eventId}`);
 
     try {
-      // Check token balance
-      const balance = await this.betTokenContract.balanceOf(
-        this.wallet.address
-      );
-      console.log(`Your BET token balance: ${balance.toString()}`);
+      // Check USDC balance
+      const balance = await this.usdcContract.balanceOf(this.wallet.address);
+      console.log(`Your USDC balance: ${balance.toString()}`);
 
       if (BigInt(balance) < BigInt(amount)) {
-        throw new Error("Insufficient BET token balance");
+        throw new Error("Insufficient USDC balance");
       }
 
       // Get current nonce for sequential transactions
@@ -240,14 +234,14 @@ class BetSwapAIIntegration {
         "latest"
       );
 
-      // Approve tokens
-      const approveTx = await this.betTokenContract.approve(
+      // Approve USDC
+      const approveTx = await this.usdcContract.approve(
         await this.betSwapAIContract.getAddress(),
         amount,
         { nonce: nonce++ }
       );
       await approveTx.wait();
-      console.log(`✅ Token approval confirmed`);
+      console.log(`✅ USDC approval confirmed`);
 
       // Place bet
       const eventIdBytes = ethers.keccak256(ethers.toUtf8Bytes(eventId));
@@ -260,7 +254,7 @@ class BetSwapAIIntegration {
       await tx.wait();
 
       console.log(`✅ Bet placed successfully!`);
-      console.log(`   Amount: ${amount} BET tokens`);
+      console.log(`   Amount: ${amount} USDC`);
       console.log(`   Outcome: ${outcome ? "Yes" : "No"}`);
       console.log(`   Transaction: ${tx.hash}`);
     } catch (error: any) {
@@ -281,12 +275,10 @@ class BetSwapAIIntegration {
     );
 
     try {
-      // Check token balance
-      const balance = await this.betTokenContract.balanceOf(
-        this.wallet.address
-      );
+      // Check USDC balance
+      const balance = await this.usdcContract.balanceOf(this.wallet.address);
       if (BigInt(balance) < BigInt(amount)) {
-        throw new Error("Insufficient BET token balance");
+        throw new Error("Insufficient USDC balance");
       }
 
       // Get current nonce
@@ -295,8 +287,8 @@ class BetSwapAIIntegration {
         "latest"
       );
 
-      // Approve tokens
-      const approveTx = await this.betTokenContract.approve(
+      // Approve USDC
+      const approveTx = await this.usdcContract.approve(
         await this.betSwapAIContract.getAddress(),
         amount,
         { nonce: nonce++ }
@@ -313,7 +305,7 @@ class BetSwapAIIntegration {
       );
       await tx.wait();
       console.log(`✅ Simplified cross-chain bet placed successfully!`);
-      console.log(`   Amount: ${amount} BET tokens`);
+      console.log(`   Amount: ${amount} USDC`);
       console.log(`   NEAR Account: ${nearAccountId}`);
       console.log(`   Transaction: ${tx.hash}`);
       console.log(

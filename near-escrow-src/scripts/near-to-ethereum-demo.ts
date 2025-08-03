@@ -18,7 +18,7 @@ interface CrossChainBetDemo {
 class NearToEthereumBettingDemo {
   private provider: ethers.JsonRpcProvider;
   private wallet: ethers.Wallet;
-  private betTokenContract: ethers.Contract;
+  private usdcContract: ethers.Contract;
   private betSwapAIContract: ethers.Contract;
   private htlcContract: ethers.Contract;
   private near: any;
@@ -33,14 +33,14 @@ class NearToEthereumBettingDemo {
     );
 
     // Contract addresses from .env.sepolia
-    const betTokenAddress = process.env.BET_TOKEN_ETH_ADDRESS!;
+    const usdcAddress = process.env.USDC_ETH_ADDRESS!;
     const betSwapAIAddress = process.env.BETSWAP_AI_ETH_ADDRESS!;
     const htlcAddress = process.env.HTLC_ETH_ADDRESS!;
 
     // Contract ABIs
-    const betTokenABI = JSON.parse(
+    const usdcABI = JSON.parse(
       fs.readFileSync(
-        "./artifacts/contracts/BetToken.sol/BetToken.json",
+        "./artifacts/contracts/MockUSDC.sol/MockUSDC.json",
         "utf8"
       )
     ).abi;
@@ -54,11 +54,7 @@ class NearToEthereumBettingDemo {
       fs.readFileSync("./artifacts/contracts/HTLC.sol/HTLC.json", "utf8")
     ).abi;
 
-    this.betTokenContract = new ethers.Contract(
-      betTokenAddress,
-      betTokenABI,
-      this.wallet
-    );
+    this.usdcContract = new ethers.Contract(usdcAddress, usdcABI, this.wallet);
     this.betSwapAIContract = new ethers.Contract(
       betSwapAIAddress,
       betSwapAIABI,

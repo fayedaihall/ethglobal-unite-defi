@@ -34,7 +34,7 @@ BetSwap AI is a revolutionary decentralized application that enables cross-chain
 
 #### Ethereum Contracts
 
-1. **BetToken.sol** - ERC-20 token representing bets
+1. **MockUSDC.sol** - USDC token for betting
 
    - Tokenized betting positions
    - Reward distribution system
@@ -107,7 +107,7 @@ BetSwap AI is a revolutionary decentralized application that enables cross-chain
 
 ### Contract Addresses (Sepolia Testnet)
 
-- **BetToken**: `0x5FbDB2315678afecb367f032d93F642f64180aa3`
+- **USDC**: `0x51A1ceB83B83F1985a81C295d1fF28Afef186E02`
 - **HTLC Contract**: `0x95401dc811bb5740090279Ba06cfA8fcF6113778`
 - **Mock USDC**: `0xf5059a5D33d5853360D16C683c16e67980206f36`
 - **Dutch Auction**: `0x998abeb3E57409262aE5b751f60747921B33613E`
@@ -169,7 +169,7 @@ BetSwap AI is a revolutionary decentralized application that enables cross-chain
 ```
 near-escrow-src/
 ├── contracts/
-│   ├── BetToken.sol              # ERC-20 token for bets
+│   ├── MockUSDC.sol              # USDC token for betting
 │   ├── BetSwapAI.sol             # Main betting contract
 │   ├── HTLC.sol                  # Cross-chain security
 │   ├── DutchAuction.sol          # Price discovery

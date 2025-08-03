@@ -8,7 +8,7 @@ The cross-chain betting system has been successfully deployed and tested. Here's
 
 | Contract          | Address                                      | Status     |
 | ----------------- | -------------------------------------------- | ---------- |
-| **BetToken**      | `0x5FbDB2315678afecb367f032d93F642f64180aa3` | ✅ Working |
+| **USDC**          | `0x51A1ceB83B83F1985a81C295d1fF28Afef186E02` | ✅ Working |
 | **BetSwapAI**     | `0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512` | ✅ Working |
 | **HTLC**          | `0x4A679253410272dd5232B3Ff7cF5dbB88f295319` | ✅ Working |
 | **Dutch Auction** | `0x998abeb3E57409262aE5b751f60747921B33613E` | ✅ Working |
@@ -53,7 +53,7 @@ The system demonstrates full cross-chain functionality:
 
 ### 🔧 **Technical Implementation**
 
-#### **BetToken Contract**
+#### **USDC Contract**
 
 - ✅ ERC20 standard implementation
 - ✅ 1,000,000 BET tokens minted

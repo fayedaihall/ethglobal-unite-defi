@@ -10,7 +10,7 @@ async function testCrossChain() {
     console.log("Wallet address:", wallet.address);
 
     // Contract addresses
-    const betTokenAddress = "0x5FbDB2315678afecb367f032d93F642f64180aa3";
+    const usdcAddress = "0x51A1ceB83B83F1985a81C295d1fF28Afef186E02";
     const betSwapAIAddress = "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512";
 
     const erc20Abi = [
@@ -27,11 +27,7 @@ async function testCrossChain() {
     console.log("\n=== Cross-Chain Betting Demo ===");
 
     try {
-      const betTokenContract = new ethers.Contract(
-        betTokenAddress,
-        erc20Abi,
-        wallet
-      );
+      const usdcContract = new ethers.Contract(usdcAddress, erc20Abi, wallet);
       const betSwapAIContract = new ethers.Contract(
         betSwapAIAddress,
         betSwapAIAbi,
@@ -39,14 +35,14 @@ async function testCrossChain() {
       );
 
       // Check balance
-      const balance = await betTokenContract.balanceOf(wallet.address);
-      console.log("✅ BET Token Balance:", balance.toString());
+      const balance = await usdcContract.balanceOf(wallet.address);
+      console.log("✅ USDC Balance:", balance.toString());
 
-      // Approve BetSwapAI to spend tokens
-      console.log("\n🔐 Approving BetSwapAI to spend tokens...");
-      const approveTx = await betTokenContract.approve(
+      // Approve BetSwapAI to spend USDC
+      console.log("\n🔐 Approving BetSwapAI to spend USDC...");
+      const approveTx = await usdcContract.approve(
         betSwapAIAddress,
-        "1000000000000000000000000"
+        "1000000000000"
       );
       await approveTx.wait();
       console.log("✅ Approval successful");
@@ -66,12 +62,12 @@ async function testCrossChain() {
       console.log("✅ Betting event created");
 
       // Place a bet (simulating cross-chain)
-      const amount = "2000000000000000000000000"; // 2 tokens
+      const amount = "2000000000"; // 2000 USDC (6 decimals)
       const outcome = true;
 
       console.log("\n🌉 Placing cross-chain bet...");
       console.log("   Event ID: cross_chain_test");
-      console.log("   Amount: 2 BET tokens");
+      console.log("   Amount: 2000 USDC");
       console.log("   Outcome: Yes");
       console.log("   NEAR Account: fayefaye2.testnet");
 

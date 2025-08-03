@@ -11,7 +11,7 @@
   "dependencies": {
     "ethers": "^6.8.1",
     "near-api-js": "^1.1.0",
-    "next": "14.0.0",
+    "next": "^15.4.5",
     "react": "^18",
     "react-dom": "^18"
   },

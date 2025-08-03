@@ -4,10 +4,10 @@ pragma solidity ^0.8.20;
 import "./HTLC.sol";
 import "./DutchAuction.sol";
 import "./ShadeAgentSolver.sol";
-import "./BetToken.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 contract BetSwapAI {
-    BetToken public betToken;
+    IERC20 public usdcToken;
     HTLC public htlcContract;
     DutchAuction public dutchAuctionContract;
     ShadeAgentSolver public solverContract;
@@ -43,12 +43,12 @@ contract BetSwapAI {
     event RewardDistributed(address indexed user, uint256 amount);
     
     constructor(
-        address _betToken,
+        address _usdcToken,
         address _htlcContract,
         address _dutchAuctionContract,
         address _solverContract
     ) {
-        betToken = BetToken(_betToken);
+        usdcToken = IERC20(_usdcToken);
         htlcContract = HTLC(_htlcContract);
         dutchAuctionContract = DutchAuction(_dutchAuctionContract);
         solverContract = ShadeAgentSolver(_solverContract);
@@ -77,9 +77,9 @@ contract BetSwapAI {
         require(betEvents[eventId].endTime > 0, "Event does not exist");
         require(!betEvents[eventId].resolved, "Event already resolved");
         require(amount > 0, "Amount must be greater than 0");
-        require(betToken.balanceOf(msg.sender) >= amount, "Insufficient balance");
+        require(usdcToken.balanceOf(msg.sender) >= amount, "Insufficient USDC balance");
         
-        betToken.transferFrom(msg.sender, address(this), amount);
+        usdcToken.transferFrom(msg.sender, address(this), amount);
         betEvents[eventId].userBets[msg.sender] += amount;
         betEvents[eventId].totalBets += amount;
         
@@ -96,7 +96,7 @@ contract BetSwapAI {
         require(betEvents[eventId].endTime > 0, "Event does not exist");
         require(!betEvents[eventId].resolved, "Event already resolved");
         require(amount > 0, "Amount must be greater than 0");
-        require(betToken.balanceOf(msg.sender) >= amount, "Insufficient balance");
+        require(usdcToken.balanceOf(msg.sender) >= amount, "Insufficient USDC balance");
         
         betId = keccak256(abi.encodePacked(eventId, msg.sender, block.timestamp));
         
@@ -110,7 +110,7 @@ contract BetSwapAI {
             completed: false
         });
         
-        betToken.transferFrom(msg.sender, address(this), amount);
+        usdcToken.transferFrom(msg.sender, address(this), amount);
         betEvents[eventId].userBets[msg.sender] += amount;
         betEvents[eventId].totalBets += amount;
         
@@ -131,14 +131,14 @@ contract BetSwapAI {
         bytes32 hashlock = keccak256(abi.encodePacked(secret));
         uint256 timelock = 7200; // 2 hours
         
-        // Approve HTLC contract to spend tokens
-        betToken.approve(address(htlcContract), amount);
+        // Approve HTLC contract to spend USDC tokens
+        usdcToken.approve(address(htlcContract), amount);
         
         // Create HTLC lock
         htlcContract.createLock(
             escrowId,
             msg.sender,
-            address(betToken),
+            address(usdcToken),
             amount,
             hashlock,
             timelock
@@ -167,7 +167,7 @@ contract BetSwapAI {
     }
     
     function _distributeRewards(bytes32 eventId, bool outcome) internal {
-        // Simple reward distribution - winners get additional tokens
+        // Simple reward distribution - winners get additional USDC
         uint256 totalReward = betEvents[eventId].totalBets / 10; // 10% of total bets as reward
         
         // In a real implementation, you'd iterate through all users and distribute proportionally
@@ -180,7 +180,7 @@ contract BetSwapAI {
         require(reward > 0, "No rewards to claim");
         
         userRewards[msg.sender] = 0;
-        betToken.transfer(msg.sender, reward);
+        usdcToken.transfer(msg.sender, reward);
         
         emit RewardDistributed(msg.sender, reward);
     }

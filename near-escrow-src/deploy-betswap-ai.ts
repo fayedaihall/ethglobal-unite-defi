@@ -50,43 +50,6 @@ async function main() {
   const nonce = await provider.getTransactionCount(wallet.address);
   console.log(`📊 Starting nonce: ${nonce}`);
 
-  // Deploy BetToken
-  console.log("\n📦 Deploying BetToken...");
-  const betTokenArtifactPath = path.join(
-    __dirname,
-    "artifacts/contracts/BetToken.sol/BetToken.json"
-  );
-
-  if (!fs.existsSync(betTokenArtifactPath)) {
-    throw new Error(
-      "BetToken artifact not found. Please compile the contracts first."
-    );
-  }
-
-  const betTokenArtifact = JSON.parse(
-    fs.readFileSync(betTokenArtifactPath, "utf8")
-  );
-  const { abi: betTokenAbi, bytecode: betTokenBytecode } = betTokenArtifact;
-
-  const BetTokenFactory = new ethers.ContractFactory(
-    betTokenAbi,
-    betTokenBytecode,
-    wallet
-  );
-
-  const betToken = await BetTokenFactory.deploy();
-  await betToken.waitForDeployment();
-  const betTokenAddress = await betToken.getAddress();
-
-  console.log(`✅ BetToken deployed to: ${betTokenAddress}`);
-
-  // Wait for transaction to be mined and get new nonce
-  console.log("⏳ Waiting for BetToken deployment to be mined...");
-  await new Promise((resolve) => setTimeout(resolve, 2000));
-
-  const newNonce = await provider.getTransactionCount(wallet.address);
-  console.log(`📊 New nonce after BetToken: ${newNonce}`);
-
   // Deploy BetSwapAI with explicit nonce
   console.log("\n📦 Deploying BetSwapAI...");
   const betSwapAIArtifactPath = path.join(
@@ -113,11 +76,11 @@ async function main() {
 
   // Deploy with explicit nonce
   const betSwapAI = await BetSwapAIFactory.deploy(
-    betTokenAddress,
+    usdcAddress,
     htlcAddress,
     dutchAuctionAddress,
     solverAddress,
-    { nonce: newNonce }
+    { nonce: nonce }
   );
   await betSwapAI.waitForDeployment();
   const betSwapAIAddress = await betSwapAI.getAddress();
@@ -132,12 +95,12 @@ async function main() {
     wallet
   );
 
-  const betTokenContract = await deployedBetSwapAI.betToken();
+  const usdcContract = await deployedBetSwapAI.usdcToken();
   const htlcContract = await deployedBetSwapAI.htlcContract();
   const dutchAuctionContract = await deployedBetSwapAI.dutchAuctionContract();
   const solverContract = await deployedBetSwapAI.solverContract();
 
-  console.log(`✅ BetToken verified: ${betTokenContract}`);
+  console.log(`✅ USDC Token verified: ${usdcContract}`);
   console.log(`✅ HTLC Contract verified: ${htlcContract}`);
   console.log(`✅ Dutch Auction Contract verified: ${dutchAuctionContract}`);
   console.log(`✅ Solver Contract verified: ${solverContract}`);
@@ -147,14 +110,13 @@ async function main() {
     network: (await provider.getNetwork()).name,
     deployer: wallet.address,
     contracts: {
-      betToken: betTokenAddress,
       betSwapAI: betSwapAIAddress,
       htlc: htlcAddress,
-      usdc: usdcAddress,
       dutchAuction: dutchAuctionAddress,
       solver: solverAddress,
+      usdc: usdcAddress,
     },
-    timestamp: new Date().toISOString(),
+    deploymentTime: new Date().toISOString(),
   };
 
   const deploymentPath = path.join(__dirname, "deployment-betswap-ai.json");
@@ -167,15 +129,10 @@ async function main() {
     process.env.NODE_ENV === "production" ? ".env.mainnet" : ".env.sepolia";
   const envContent = fs.readFileSync(envPath, "utf8");
 
-  const updatedEnvContent = envContent
-    .replace(
-      /BET_TOKEN_ETH_ADDRESS=.*/g,
-      `BET_TOKEN_ETH_ADDRESS=${betTokenAddress}`
-    )
-    .replace(
-      /BETSWAP_AI_ETH_ADDRESS=.*/g,
-      `BETSWAP_AI_ETH_ADDRESS=${betSwapAIAddress}`
-    );
+  const updatedEnvContent = envContent.replace(
+    /BETSWAP_AI_ETH_ADDRESS=.*/g,
+    `BETSWAP_AI_ETH_ADDRESS=${betSwapAIAddress}`
+  );
 
   fs.writeFileSync(envPath, updatedEnvContent);
 
@@ -183,7 +140,6 @@ async function main() {
 
   console.log("\n🎉 BetSwap AI Deployment Complete!");
   console.log("\n📋 Contract Addresses:");
-  console.log(`   BetToken: ${betTokenAddress}`);
   console.log(`   BetSwapAI: ${betSwapAIAddress}`);
   console.log(`   HTLC: ${htlcAddress}`);
   console.log(`   USDC: ${usdcAddress}`);
@@ -191,9 +147,6 @@ async function main() {
   console.log(`   Shade Agent Solver: ${solverAddress}`);
 
   console.log("\n🔗 Etherscan Links:");
-  console.log(
-    `   BetToken: https://sepolia.etherscan.io/address/${betTokenAddress}`
-  );
   console.log(
     `   BetSwapAI: https://sepolia.etherscan.io/address/${betSwapAIAddress}`
   );

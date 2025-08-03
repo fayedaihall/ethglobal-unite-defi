@@ -9,8 +9,8 @@ async function testBalance() {
 
     console.log("Wallet address:", wallet.address);
 
-    // Test the new BetToken contract
-    const betTokenAddress = "0x7a2088a1bFc9d81c55368AE168C2C02570cB814F";
+    // Test the USDC contract
+    const usdcAddress = "0x51A1ceB83B83F1985a81C295d1fF28Afef186E02";
 
     const erc20Abi = [
       "function balanceOf(address) view returns(uint256)",
@@ -23,43 +23,39 @@ async function testBalance() {
       "function allowance(address,address) view returns(uint256)",
     ];
 
-    console.log(`\nTesting NEW BetToken at: ${betTokenAddress}`);
+    console.log(`\nTesting USDC at: ${usdcAddress}`);
 
     try {
-      const betTokenContract = new ethers.Contract(
-        betTokenAddress,
-        erc20Abi,
-        wallet
-      );
+      const usdcContract = new ethers.Contract(usdcAddress, erc20Abi, wallet);
 
       // Test basic ERC20 functions
-      const balance = await betTokenContract.balanceOf(wallet.address);
+      const balance = await usdcContract.balanceOf(wallet.address);
       console.log("✅ Balance:", balance.toString());
 
-      const totalSupply = await betTokenContract.totalSupply();
+      const totalSupply = await usdcContract.totalSupply();
       console.log("✅ Total Supply:", totalSupply.toString());
 
-      const name = await betTokenContract.name();
+      const name = await usdcContract.name();
       console.log("✅ Name:", name);
 
-      const symbol = await betTokenContract.symbol();
+      const symbol = await usdcContract.symbol();
       console.log("✅ Symbol:", symbol);
 
-      const decimals = await betTokenContract.decimals();
+      const decimals = await usdcContract.decimals();
       console.log("✅ Decimals:", decimals);
 
       // Test approval for the new BetSwapAI contract
       const betSwapAIAddress = "0x09635F643e140090A9A8Dcd712eD6285858ceBef";
       console.log(`\nTesting approval for NEW BetSwapAI: ${betSwapAIAddress}`);
 
-      const approveTx = await betTokenContract.approve(
+      const approveTx = await usdcContract.approve(
         betSwapAIAddress,
-        "1000000000000000000000000"
+        "1000000000000"
       );
       await approveTx.wait();
       console.log("✅ Approval successful");
 
-      const allowance = await betTokenContract.allowance(
+      const allowance = await usdcContract.allowance(
         wallet.address,
         betSwapAIAddress
       );

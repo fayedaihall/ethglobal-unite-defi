@@ -11,7 +11,7 @@ async function testHTLC() {
 
     // Test the HTLC contract directly
     const htlcAddress = "0x4A679253410272dd5232B3Ff7cF5dbB88f295319";
-    const betTokenAddress = "0x7a2088a1bFc9d81c55368AE168C2C02570cB814F";
+    const usdcAddress = "0x51A1ceB83B83F1985a81C295d1fF28Afef186E02";
 
     const htlcAbi = [
       "function createLock(bytes32,address,address,uint256,bytes32,uint256)",
@@ -29,17 +29,13 @@ async function testHTLC() {
 
     try {
       const htlcContract = new ethers.Contract(htlcAddress, htlcAbi, wallet);
-      const betTokenContract = new ethers.Contract(
-        betTokenAddress,
-        erc20Abi,
-        wallet
-      );
+      const usdcContract = new ethers.Contract(usdcAddress, erc20Abi, wallet);
 
       // First, approve the HTLC contract to spend tokens
       console.log("Approving HTLC contract to spend tokens...");
-      const approveTx = await betTokenContract.approve(
+      const approveTx = await usdcContract.approve(
         htlcAddress,
-        "1000000000000000000000000"
+        "1000000000000"
       );
       await approveTx.wait();
       console.log("✅ HTLC approval successful");
@@ -55,7 +51,7 @@ async function testHTLC() {
       const createLockTx = await htlcContract.createLock(
         escrowId,
         recipient,
-        betTokenAddress,
+        usdcAddress,
         amount,
         hashlock,
         timelock

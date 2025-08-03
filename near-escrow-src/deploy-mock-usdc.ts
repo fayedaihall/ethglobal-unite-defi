@@ -5,7 +5,7 @@ import * as fs from "fs";
 dotenv.config();
 // Load environment variables from the appropriate file
 const envFile =
-  process.env.NODE_ENV === "production" ? ".env.mainnet" : ".env.testnet";
+  process.env.NODE_ENV === "production" ? ".env.mainnet" : ".env.sepolia";
 dotenv.config({ path: envFile });
 
 async function deployMockUSDC() {

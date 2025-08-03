@@ -33,17 +33,17 @@ if [ ! -f .env.local ]; then
     echo "📝 Creating .env.local file..."
     cat > .env.local << EOF
 # Ethereum Configuration
-NEXT_PUBLIC_ETHEREUM_RPC_URL=http://localhost:8545
-NEXT_PUBLIC_ETHEREUM_NETWORK=localhost
+NEXT_PUBLIC_ETHEREUM_RPC_URL=https://rpc.sepolia.org
+NEXT_PUBLIC_ETHEREUM_NETWORK=sepolia
 
 # NEAR Configuration
 NEXT_PUBLIC_NEAR_NETWORK=testnet
 NEXT_PUBLIC_NEAR_RPC_URL=https://rpc.testnet.near.org
 
-# Contract Addresses (will be updated after deployment)
-NEXT_PUBLIC_BETSWAP_AI_ADDRESS=
-NEXT_PUBLIC_BET_TOKEN_ADDRESS=
-NEXT_PUBLIC_HTLC_ADDRESS=
+# Contract Addresses (Sepolia testnet)
+NEXT_PUBLIC_BETSWAP_AI_ADDRESS=0xCf7Ed3AccA5a467e9e704C703E8D87F634fB0Fc9
+NEXT_PUBLIC_USDC_ADDRESS=0xa513E6E4b8f2a923D98304ec87F64353C4D5C853
+NEXT_PUBLIC_HTLC_ADDRESS=0x4A679253410272dd5232B3Ff7cF5dbB88f295319
 EOF
     echo "✅ .env.local created"
 fi

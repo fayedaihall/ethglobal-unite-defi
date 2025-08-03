@@ -22,7 +22,7 @@ class DutchAuctionDemo {
   private wallet: ethers.Wallet;
   private dutchAuctionContract: ethers.Contract;
   private htlcContract: ethers.Contract;
-  private betTokenContract: ethers.Contract;
+  private usdcContract: ethers.Contract;
   private near: any;
   private nearAccount: any;
 
@@ -37,7 +37,7 @@ class DutchAuctionDemo {
     // Contract addresses
     const dutchAuctionAddress = process.env.DUTCH_AUCTION_ETH_ADDRESS!;
     const htlcAddress = process.env.HTLC_ETH_ADDRESS!;
-    const betTokenAddress = process.env.BET_TOKEN_ETH_ADDRESS!;
+    const usdcAddress = process.env.USDC_ETH_ADDRESS!;
 
     // Contract ABIs
     const dutchAuctionABI = JSON.parse(
@@ -49,9 +49,9 @@ class DutchAuctionDemo {
     const htlcABI = JSON.parse(
       fs.readFileSync("./artifacts/contracts/HTLC.sol/HTLC.json", "utf8")
     ).abi;
-    const betTokenABI = JSON.parse(
+    const usdcABI = JSON.parse(
       fs.readFileSync(
-        "./artifacts/contracts/BetToken.sol/BetToken.json",
+        "./artifacts/contracts/MockUSDC.sol/MockUSDC.json",
         "utf8"
       )
     ).abi;
@@ -62,11 +62,7 @@ class DutchAuctionDemo {
       this.wallet
     );
     this.htlcContract = new ethers.Contract(htlcAddress, htlcABI, this.wallet);
-    this.betTokenContract = new ethers.Contract(
-      betTokenAddress,
-      betTokenABI,
-      this.wallet
-    );
+    this.usdcContract = new ethers.Contract(usdcAddress, usdcABI, this.wallet);
 
     this.setupNear();
   }

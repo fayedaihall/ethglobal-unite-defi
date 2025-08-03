@@ -29,7 +29,7 @@ class BetSwapAIDemo {
     // Step 1: Show the architecture
     console.log("\n🏗️ Architecture Overview:");
     console.log("├── Ethereum Smart Contracts");
-    console.log("│   ├── BetToken.sol: ERC-20 token for bets");
+    console.log("│   ├── MockUSDC.sol: USDC token for betting");
     console.log("│   ├── BetSwapAI.sol: Main betting contract");
     console.log("│   ├── HTLC.sol: Cross-chain security");
     console.log("│   ├── DutchAuction.sol: Price discovery");
@@ -46,9 +46,9 @@ class BetSwapAIDemo {
     // Step 2: Show contract addresses
     console.log("\n📋 Contract Addresses:");
     console.log(
-      `   BetToken: ${
-        process.env.BET_TOKEN_ETH_ADDRESS ||
-        "0x5FbDB2315678afecb367f032d93F642f64180aa3"
+      `   USDC: ${
+        process.env.USDC_ETH_ADDRESS ||
+        "0x51A1ceB83B83F1985a81C295d1fF28Afef186E02"
       }`
     );
     console.log(

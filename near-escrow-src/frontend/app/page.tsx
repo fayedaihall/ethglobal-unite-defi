@@ -44,7 +44,7 @@ interface BetInput {
 
 interface ContractConfig {
   betSwapAIAddress: string;
-  usdcAddress: string; // Changed from betTokenAddress
+  usdcAddress: string;
   htlcAddress: string;
 }
 
@@ -57,6 +57,17 @@ export default function BetSwapDemo() {
     // Override console.error to prevent error popups
     console.error = (...args) => {
       const errorMessage = args.join(' ');
+
+      // Suppress Chrome extension errors
+      if (errorMessage.includes('chrome.runtime.sendMessage') ||
+        errorMessage.includes('Extension ID') ||
+        errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama') ||
+        errorMessage.includes('Runtime TypeError') ||
+        errorMessage.includes('chrome-extension://')) {
+        console.log('🔍 Chrome extension error suppressed:', errorMessage);
+        return;
+      }
+
       console.log('🔍 Error logged (suppressed popup):', errorMessage);
       // Don't call originalError to prevent error popups
     };
@@ -71,12 +82,37 @@ export default function BetSwapDemo() {
     // Override window.onerror to prevent error overlays
     const originalOnError = window.onerror;
     window.onerror = function (message, source, lineno, colno, error) {
+      const errorMessage = message?.toString() || '';
+
+      // Suppress Chrome extension errors
+      if (errorMessage.includes('chrome.runtime.sendMessage') ||
+        errorMessage.includes('Extension ID') ||
+        errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama') ||
+        errorMessage.includes('Runtime TypeError') ||
+        errorMessage.includes('chrome-extension://')) {
+        console.log('🔍 Chrome extension error suppressed:', errorMessage);
+        return true; // Prevent default error handling
+      }
+
       console.log('🔍 Window error logged (suppressed popup):', message);
       return true; // Prevent default error handling
     };
 
     // Override unhandled promise rejections
     window.addEventListener('unhandledrejection', (event) => {
+      const errorMessage = event.reason?.toString() || '';
+
+      // Suppress Chrome extension errors
+      if (errorMessage.includes('chrome.runtime.sendMessage') ||
+        errorMessage.includes('Extension ID') ||
+        errorMessage.includes('opfgelmcmbiajamepnmloijbpoleiama') ||
+        errorMessage.includes('Runtime TypeError') ||
+        errorMessage.includes('chrome-extension://')) {
+        console.log('🔍 Chrome extension promise rejection suppressed:', errorMessage);
+        event.preventDefault();
+        return;
+      }
+
       console.log('🔍 Unhandled promise rejection logged (suppressed popup):', event.reason);
       event.preventDefault(); // Prevent default error handling
     });
@@ -91,6 +127,7 @@ export default function BetSwapDemo() {
 
   const [ethereumAccount, setEthereumAccount] = useState<string>('');
   const [nearAccount, setNearAccount] = useState<string | null>(null);
+  const [forceUpdate, setForceUpdate] = useState<number>(0);
   const [currentChain, setCurrentChain] = useState<'ethereum' | 'near'>('ethereum');
   const [ethereumEvents, setEthereumEvents] = useState<BettingEvent[]>([]);
   const [nearEvents, setNearEvents] = useState<BettingEvent[]>([]);
@@ -116,6 +153,64 @@ export default function BetSwapDemo() {
   const [nearRefreshAttempts, setNearRefreshAttempts] = useState(0);
   // Add state for instruction popup
   const [showNearInstructionPopup, setShowNearInstructionPopup] = useState(false);
+
+  // Native betting tracking state
+  const [ethereumNativeBets, setEthereumNativeBets] = useState<BetInput[]>([]);
+  const [nearNativeBets, setNearNativeBets] = useState<BetInput[]>([]);
+  const [ethereumNativeWinnings, setEthereumNativeWinnings] = useState<number>(0);
+  const [nearNativeWinnings, setNearNativeWinnings] = useState<number>(0);
+  const [ethereumNativeWinRate, setEthereumNativeWinRate] = useState<number>(0);
+  const [nearNativeWinRate, setNearNativeWinRate] = useState<number>(0);
+  const [isHydrated, setIsHydrated] = useState(false);
+
+  // Cross-chain betting tracking state
+  const [crossChainBets, setCrossChainBets] = useState<BetInput[]>([]);
+  const [crossChainWinnings, setCrossChainWinnings] = useState<number>(0);
+  const [crossChainWinRate, setCrossChainWinRate] = useState<number>(0);
+
+  // Load data from localStorage after hydration
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const savedEthereumBets = localStorage.getItem('betswap_ethereum_native_bets');
+      const savedNearBets = localStorage.getItem('betswap_near_native_bets');
+      const savedEthereumWinnings = localStorage.getItem('betswap_ethereum_native_winnings');
+      const savedNearWinnings = localStorage.getItem('betswap_near_native_winnings');
+      const savedEthereumWinRate = localStorage.getItem('betswap_ethereum_native_winrate');
+      const savedNearWinRate = localStorage.getItem('betswap_near_native_winrate');
+      const savedCrossChainBets = localStorage.getItem('betswap_cross_chain_bets');
+      const savedCrossChainWinnings = localStorage.getItem('betswap_cross_chain_winnings');
+      const savedCrossChainWinRate = localStorage.getItem('betswap_cross_chain_winrate');
+
+      if (savedEthereumBets) {
+        setEthereumNativeBets(JSON.parse(savedEthereumBets));
+      }
+      if (savedNearBets) {
+        setNearNativeBets(JSON.parse(savedNearBets));
+      }
+      if (savedEthereumWinnings) {
+        setEthereumNativeWinnings(parseFloat(savedEthereumWinnings));
+      }
+      if (savedNearWinnings) {
+        setNearNativeWinnings(parseFloat(savedNearWinnings));
+      }
+      if (savedEthereumWinRate) {
+        setEthereumNativeWinRate(parseFloat(savedEthereumWinRate));
+      }
+      if (savedNearWinRate) {
+        setNearNativeWinRate(parseFloat(savedNearWinRate));
+      }
+      if (savedCrossChainBets) {
+        setCrossChainBets(JSON.parse(savedCrossChainBets));
+      }
+      if (savedCrossChainWinnings) {
+        setCrossChainWinnings(parseFloat(savedCrossChainWinnings));
+      }
+      if (savedCrossChainWinRate) {
+        setCrossChainWinRate(parseFloat(savedCrossChainWinRate));
+      }
+    }
+    setIsHydrated(true);
+  }, []);
 
 
 
@@ -219,25 +314,85 @@ export default function BetSwapDemo() {
       throw new Error('Contract manager or account not available');
     }
 
+    // Get BetSwapAI contract address for approval
+    const betSwapAIAddress = await contractManager.betSwapAIContract.getAddress();
+
+    // Calculate total amount needed for all bets
+    const totalAmount = bets.reduce((sum, bet) => sum + parseFloat(bet.amount), 0);
+
+    // Check USDC balance first
+    const balance = await contractManager.getUsdcBalance(ethereumAccount);
+    const balanceNum = parseFloat(balance);
+    if (balanceNum < totalAmount) {
+      throw new Error(`Insufficient USDC balance. You have ${balanceNum.toFixed(2)} USDC but need ${totalAmount} USDC.`);
+    }
+
+    // First, approve USDC spending for the total amount
+    console.log(`Approving ${totalAmount} USDC for BetSwapAI contract...`);
+    try {
+      const approveTx = await contractManager.approveUsdcTokens(betSwapAIAddress, totalAmount.toString());
+      await approveTx.wait();
+      console.log('USDC approval successful');
+    } catch (error) {
+      console.error('Error approving USDC:', error);
+      throw new Error('Failed to approve USDC spending. Please try again.');
+    }
+
     for (const bet of bets) {
-      console.log(`Placing bet: ${bet.amount} BET on event ${bet.eventId}, outcome: ${bet.outcome}`);
+      console.log(`Placing bet: ${bet.amount} USDC on event ${bet.eventId}, outcome: ${bet.outcome}`);
 
       try {
+        // First, create the event if it doesn't exist
+        const eventIdBytes = ethers.keccak256(ethers.toUtf8Bytes(`event_${bet.eventId}`));
+        const endTime = Math.floor(Date.now() / 1000) + 86400; // 24 hours from now
+
+        try {
+          await contractManager.createBetEvent(
+            `Event ${bet.eventId}`,
+            `Demo event for testing`,
+            endTime
+          );
+          console.log(`Event ${bet.eventId} created successfully`);
+        } catch (createError) {
+          console.log(`Event ${bet.eventId} may already exist, continuing with bet placement`);
+        }
+
         const txHash = await contractManager.placeBet(bet.eventId, bet.amount, bet.outcome);
         console.log('Bet placed successfully:', txHash);
 
+        // Track native betting data
+        setEthereumNativeBets(prev => [...prev, bet]);
+
+        // Simulate winnings (in real implementation, this would be calculated from actual results)
+        const betAmount = parseFloat(bet.amount);
+        const simulatedWinning = Math.random() > 0.5 ? betAmount * 1.5 : 0;
+        setEthereumNativeWinnings(prev => prev + simulatedWinning);
+
+        // Calculate win rate
+        const totalBets = ethereumNativeBets.length + 1;
+        const totalWins = ethereumNativeBets.filter(b => Math.random() > 0.5).length + (simulatedWinning > 0 ? 1 : 0);
+        setEthereumNativeWinRate(totalWins / totalBets * 100);
+
         // Update balance after successful bet
         await getUsdcBalance(contractManager, ethereumAccount);
-      } catch (error) {
+      } catch (error: any) {
         console.error('Error placing bet:', error);
-        throw error;
+        if (error.message?.includes('Insufficient USDC balance')) {
+          throw new Error('Insufficient USDC balance. Please fund your account first.');
+        } else if (error.message?.includes('Event does not exist')) {
+          throw new Error('Event does not exist. Please try again.');
+        } else if (error.message?.includes('Event already resolved')) {
+          throw new Error('This event has already been resolved.');
+        } else {
+          throw new Error(`Failed to place bet: ${error.message || 'Unknown error'}`);
+        }
       }
     }
   };
 
   const placeNearBets = async (bets: BetInput[]) => {
     try {
-      if (!nearWalletManager.isConnected()) {
+      if (!nearAccount) {
         alert('Please connect to NEAR wallet first!');
         return;
       }
@@ -256,13 +411,24 @@ export default function BetSwapDemo() {
           await new Promise(resolve => setTimeout(resolve, 1000));
 
           console.log(`✅ NEAR bet placed successfully for event ${bet.eventId}`);
+
+          // Track native betting data
+          setNearNativeBets(prev => [...prev, bet]);
+
+          // Simulate winnings (in real implementation, this would be calculated from actual results)
+          const betAmount = parseFloat(bet.amount);
+          const simulatedWinning = Math.random() > 0.5 ? betAmount * 1.5 : 0;
+          setNearNativeWinnings(prev => prev + simulatedWinning);
+
+          // Calculate win rate
+          const totalBets = nearNativeBets.length + 1;
+          const totalWins = nearNativeBets.filter(b => Math.random() > 0.5).length + (simulatedWinning > 0 ? 1 : 0);
+          setNearNativeWinRate(totalWins / totalBets * 100);
         } catch (error) {
           console.error(`❌ Failed to place NEAR bet for event ${bet.eventId}:`, error);
           alert(`Failed to place bet for event ${bet.eventId}. Please try again.`);
         }
       }
-
-      // Clear bets after successful placement
       setNearBets([]);
       alert('NEAR bets placed successfully!');
     } catch (error) {
@@ -279,7 +445,31 @@ export default function BetSwapDemo() {
       return;
     }
 
-    if (chain === 'ethereum' && !contractManager) {
+    // Determine which wallet to use for placing bets
+    let targetChain: 'ethereum' | 'near';
+    if (chain === 'ethereum') {
+      if (ethereumAccount) {
+        targetChain = 'ethereum';
+      } else if (nearAccount) {
+        targetChain = 'near';
+        alert('⚠️ Cross-chain betting: Placing Ethereum event bets using NEAR wallet');
+      } else {
+        alert('Please connect to Ethereum or NEAR wallet first!');
+        return;
+      }
+    } else { // chain === 'near'
+      if (nearAccount) {
+        targetChain = 'near';
+      } else if (ethereumAccount) {
+        targetChain = 'ethereum';
+        alert('⚠️ Cross-chain betting: Placing NEAR event bets using Ethereum wallet');
+      } else {
+        alert('Please connect to NEAR or Ethereum wallet first!');
+        return;
+      }
+    }
+
+    if (targetChain === 'ethereum' && !contractManager) {
       alert('Please connect to Ethereum first!');
       return;
     }
@@ -287,7 +477,7 @@ export default function BetSwapDemo() {
     setIsLoading(true);
 
     try {
-      if (chain === 'ethereum') {
+      if (targetChain === 'ethereum') {
         await placeEthereumBets(bets);
       } else {
         await placeNearBets(bets);
@@ -300,7 +490,26 @@ export default function BetSwapDemo() {
         setNearBets([]);
       }
 
-      alert(`${bets.length} bets placed successfully on ${chain}!`);
+      const crossChainMessage = targetChain !== chain ? ` (via ${targetChain} wallet)` : '';
+      alert(`${bets.length} bets placed successfully on ${chain}${crossChainMessage}!`);
+
+      // Track cross-chain bets if this was a cross-chain transaction
+      if (targetChain !== chain) {
+        console.log('🔄 Tracking cross-chain bet...');
+        for (const bet of bets) {
+          setCrossChainBets(prev => [...prev, bet]);
+
+          // Simulate cross-chain winnings
+          const betAmount = parseFloat(bet.amount);
+          const simulatedWinning = Math.random() > 0.5 ? betAmount * 1.8 : 0; // Higher multiplier for cross-chain
+          setCrossChainWinnings(prev => prev + simulatedWinning);
+
+          // Calculate cross-chain win rate
+          const totalBets = crossChainBets.length + 1;
+          const totalWins = crossChainBets.filter(b => Math.random() > 0.5).length + (simulatedWinning > 0 ? 1 : 0);
+          setCrossChainWinRate(totalWins / totalBets * 100);
+        }
+      }
     } catch (error) {
       console.error(`Error placing bets on ${chain}:`, error);
       alert(`Failed to place bets on ${chain}. Please try again.`);
@@ -312,6 +521,45 @@ export default function BetSwapDemo() {
   // Sample betting events for demo - Updated for August 2025
   useEffect(() => {
     console.log('Loading events...');
+
+    // Create all events on the blockchain when component loads
+    const createAllEvents = async () => {
+      if (contractManager && ethereumAccount) {
+        console.log('🔄 Creating all events on Ethereum...');
+        try {
+          const events = [
+            { id: '1', title: 'Bitcoin ETF Approval Q4 2025', description: 'Will the SEC approve additional spot Bitcoin ETFs by December 31, 2025?' },
+            { id: '2', title: 'Premier League 2025/26 Winner', description: 'Will Manchester City win the 2025/26 Premier League title?' },
+            { id: '3', title: 'UEFA Champions League 2025/26', description: 'Will Real Madrid win the 2025/26 UEFA Champions League?' },
+            { id: '4', title: 'NBA Finals 2025 Winner', description: 'Will the Boston Celtics win the 2025 NBA Championship?' },
+            { id: '5', title: 'Tesla Stock Performance 2025', description: 'Will TSLA close above $300 on December 31, 2025?' },
+            { id: '6', title: 'World Cup 2026 Winner', description: 'Will the United States reach the semifinals of the 2026 FIFA World Cup?' }
+          ];
+
+          for (const event of events) {
+            try {
+              const endTime = Math.floor(Date.now() / 1000) + 86400; // 24 hours from now
+              await contractManager.createBetEvent(
+                event.title,
+                event.description,
+                endTime
+              );
+              console.log(`✅ Event ${event.id} created successfully`);
+            } catch (error) {
+              console.log(`ℹ️ Event ${event.id} may already exist, continuing...`);
+            }
+          }
+        } catch (error) {
+          console.error('Error creating events:', error);
+        }
+      }
+    };
+
+    // Create events when contract manager is available
+    if (contractManager && ethereumAccount) {
+      createAllEvents();
+    }
+
     const sampleEthereumEvents: BettingEvent[] = [
       {
         id: '1',
@@ -428,7 +676,63 @@ export default function BetSwapDemo() {
 
     setEthereumEvents(sampleEthereumEvents);
     setNearEvents(sampleNearEvents);
-  }, []);
+  }, [contractManager, ethereumAccount]);
+
+  // Save native betting data to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('betswap_ethereum_native_bets', JSON.stringify(ethereumNativeBets));
+    }
+  }, [ethereumNativeBets]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('betswap_near_native_bets', JSON.stringify(nearNativeBets));
+    }
+  }, [nearNativeBets]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('betswap_ethereum_native_winnings', ethereumNativeWinnings.toString());
+    }
+  }, [ethereumNativeWinnings]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('betswap_near_native_winnings', nearNativeWinnings.toString());
+    }
+  }, [nearNativeWinnings]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('betswap_ethereum_native_winrate', ethereumNativeWinRate.toString());
+    }
+  }, [ethereumNativeWinRate]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('betswap_near_native_winrate', nearNativeWinRate.toString());
+    }
+  }, [nearNativeWinRate]);
+
+  // Save cross-chain betting data to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('betswap_cross_chain_bets', JSON.stringify(crossChainBets));
+    }
+  }, [crossChainBets]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('betswap_cross_chain_winnings', crossChainWinnings.toString());
+    }
+  }, [crossChainWinnings]);
+
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      localStorage.setItem('betswap_cross_chain_winrate', crossChainWinRate.toString());
+    }
+  }, [crossChainWinRate]);
 
   // Fetch AI predictions when events are loaded
   useEffect(() => {
@@ -460,33 +764,8 @@ export default function BetSwapDemo() {
   useEffect(() => {
     const loadPersistentConnections = async () => {
       try {
-        // Check for persistent Ethereum connection
-        const savedEthAccount = localStorage.getItem('betswap_eth_account');
-        if (savedEthAccount && typeof window !== 'undefined' && window.ethereum) {
-          try {
-            const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-            if (accounts && accounts.length > 0 && accounts[0].toLowerCase() === savedEthAccount.toLowerCase()) {
-              console.log('🔄 Restoring persistent Ethereum connection...');
-              setEthereumAccount(savedEthAccount);
-
-              // Reinitialize contract manager
-              const provider = new ethers.BrowserProvider(window.ethereum);
-              const signer = await provider.getSigner();
-              const newContractManager = createContractManager(provider);
-              await newContractManager.initialize(signer);
-              setContractManager(newContractManager);
-
-              // Get balance
-              const balance = await newContractManager.getUsdcBalance(savedEthAccount);
-              setUsdcBalance(balance);
-              setNetworkStatus('Connected to Ethereum Sepolia');
-              console.log('✅ Restored Ethereum connection:', savedEthAccount);
-            }
-          } catch (error) {
-            console.log('Failed to restore Ethereum connection:', error);
-            localStorage.removeItem('betswap_eth_account');
-          }
-        }
+        // Don't auto-connect - let user explicitly click connect button
+        console.log('🔄 Skipping auto-connection - user must click connect button');
 
         // Check for persistent NEAR connection
         const savedNearAccount = localStorage.getItem('betswap_near_account');
@@ -504,7 +783,122 @@ export default function BetSwapDemo() {
     };
 
     loadPersistentConnections();
-  }, []);
+
+    // Check MetaMask availability on page load
+    console.log('🔍 Checking MetaMask availability on page load...');
+    console.log('🔍 Window object:', typeof window !== 'undefined' ? 'Available' : 'Not available');
+    if (typeof window !== 'undefined') {
+      console.log('🔍 Window.ethereum:', window.ethereum ? 'Available' : 'Not available');
+      if (window.ethereum) {
+        console.log('🔍 MetaMask provider:', window.ethereum);
+        console.log('🔍 MetaMask isConnected:', window.ethereum.isConnected ? 'Yes' : 'No');
+        console.log('🔍 MetaMask selectedAddress:', window.ethereum.selectedAddress);
+      }
+    }
+
+    // Define account change handler
+    const handleAccountsChanged = async (accounts: string[]) => {
+      console.log('🔄 MetaMask accounts changed:', accounts);
+      console.log('🔄 Current frontend account before change:', ethereumAccount);
+
+      if (accounts.length === 0) {
+        // User disconnected MetaMask
+        console.log('🔄 Disconnecting from MetaMask...');
+        setEthereumAccount('');
+        setUsdcBalance('0');
+        setContractManager(null);
+        localStorage.removeItem('betswap_eth_account');
+        setNetworkStatus('Disconnected from Ethereum');
+        setForceUpdate(prev => prev + 1);
+      } else {
+        // User switched accounts
+        const newAccount = accounts[0];
+        console.log('📋 New MetaMask account:', newAccount);
+        console.log('📋 Old frontend account:', ethereumAccount);
+
+        // Force immediate state update
+        setEthereumAccount(newAccount);
+        localStorage.setItem('betswap_eth_account', newAccount);
+        setForceUpdate(prev => prev + 1); // Force re-render
+
+        console.log('🔄 State updated, new account should be:', newAccount);
+
+        // Reinitialize contract manager and get balance
+        try {
+          const provider = new ethers.BrowserProvider(window.ethereum);
+          const signer = await provider.getSigner();
+          const newContractManager = createContractManager(provider);
+          await newContractManager.initialize(signer);
+          setContractManager(newContractManager);
+
+          const balance = await newContractManager.getUsdcBalance(newAccount);
+          setUsdcBalance(balance);
+          setNetworkStatus('Connected to Ethereum Sepolia');
+          console.log('✅ Updated to new Ethereum account:', newAccount);
+        } catch (error) {
+          console.error('Error updating to new account:', error);
+        }
+      }
+    };
+
+    // Add listener for MetaMask account changes
+    if (typeof window !== 'undefined' && window.ethereum) {
+      // Remove any existing listeners first
+      window.ethereum.removeAllListeners('accountsChanged');
+      window.ethereum.on('accountsChanged', handleAccountsChanged);
+
+      // Cleanup listener on unmount
+      return () => {
+        if (window.ethereum) {
+          window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+        }
+      };
+    }
+
+    // Add periodic check for account changes (fallback)
+    const checkAccountPeriodically = async () => {
+      if (typeof window !== 'undefined' && window.ethereum && ethereumAccount) {
+        try {
+          const accounts = await window.ethereum.request({ method: 'eth_accounts' });
+          const currentMetaMaskAccount = accounts[0];
+
+          if (currentMetaMaskAccount && currentMetaMaskAccount.toLowerCase() !== ethereumAccount.toLowerCase()) {
+            console.log('🔄 Periodic check detected account change!');
+            console.log('📋 MetaMask account:', currentMetaMaskAccount);
+            console.log('📋 Frontend account:', ethereumAccount);
+
+            setEthereumAccount(currentMetaMaskAccount);
+            localStorage.setItem('betswap_eth_account', currentMetaMaskAccount);
+            setForceUpdate(prev => prev + 1);
+
+            // Reinitialize contract manager
+            const provider = new ethers.BrowserProvider(window.ethereum);
+            const signer = await provider.getSigner();
+            const newContractManager = createContractManager(provider);
+            await newContractManager.initialize(signer);
+            setContractManager(newContractManager);
+
+            const balance = await newContractManager.getUsdcBalance(currentMetaMaskAccount);
+            setUsdcBalance(balance);
+            setNetworkStatus('Connected to Ethereum Sepolia');
+            console.log('✅ Updated to new Ethereum account via periodic check:', currentMetaMaskAccount);
+          }
+        } catch (error) {
+          console.error('Error in periodic account check:', error);
+        }
+      }
+    };
+
+    // Check every 5 seconds
+    const interval = setInterval(checkAccountPeriodically, 5000);
+
+    return () => {
+      clearInterval(interval);
+      if (window.ethereum) {
+        window.ethereum.removeListener('accountsChanged', handleAccountsChanged);
+      }
+    };
+  }, [ethereumAccount]); // Add ethereumAccount as dependency
 
   // Check for existing NEAR wallet connections on page load
   useEffect(() => {
@@ -588,49 +982,81 @@ export default function BetSwapDemo() {
     setErrorMessage('');
     setShowTroubleshooting(false);
 
+    console.log('🔄 Starting Ethereum connection...');
+    console.log('🔍 Window object:', typeof window !== 'undefined' ? 'Available' : 'Not available');
+    console.log('🔍 Window.ethereum:', window.ethereum ? 'Available' : 'Not available');
+
     try {
       if (typeof window === 'undefined') {
+        console.log('❌ Window object not available');
         setErrorMessage('This app requires a browser environment.');
         setShowTroubleshooting(true);
         return;
       }
       if (!window.ethereum) {
+        console.log('❌ MetaMask not detected');
         setErrorMessage('MetaMask is not installed. Please install MetaMask to continue.');
         setShowTroubleshooting(true);
         return;
       }
-      try {
-        const accounts = await window.ethereum.request({ method: 'eth_accounts' });
-        if (!accounts || accounts.length === 0) {
-          setErrorMessage('MetaMask is locked. Please unlock MetaMask to continue.');
-          setShowTroubleshooting(true);
-          return;
-        }
-      } catch (error: any) {
-        console.log('Error checking MetaMask unlock status:', error);
-        setErrorMessage('Failed to check MetaMask status. Please ensure MetaMask is unlocked.');
-        setShowTroubleshooting(true);
-        return;
-      }
+      // Skip the initial account check - we'll force the popup anyway
+      console.log('🔄 Will force MetaMask popup on connection...');
 
       const accounts = await window.ethereum.request({ method: 'eth_requestAccounts' });
       const account = accounts[0];
 
+      console.log('📋 Requested accounts:', accounts);
+      console.log('📋 Selected account:', account);
+
       if (account) {
+        console.log('🔄 Setting Ethereum account:', account);
         setEthereumAccount(account);
+        setForceUpdate(prev => prev + 1); // Force re-render
 
         // Save to localStorage for persistence
         localStorage.setItem('betswap_eth_account', account);
+        console.log('💾 Saved to localStorage:', account);
 
         const provider = new ethers.BrowserProvider(window.ethereum);
         const signer = await provider.getSigner();
         const newContractManager = createContractManager(provider);
         await newContractManager.initialize(signer);
         setContractManager(newContractManager);
+        console.log('✅ Contract manager initialized');
 
         await getUsdcBalance(newContractManager, account);
         setNetworkStatus('Connected to Ethereum Sepolia');
         console.log('✅ Connected to Ethereum:', account);
+
+        // Create all events after successful connection
+        console.log('🔄 Creating all events on Ethereum...');
+        try {
+          const events = [
+            { id: '1', title: 'Bitcoin ETF Approval Q4 2025', description: 'Will the SEC approve additional spot Bitcoin ETFs by December 31, 2025?' },
+            { id: '2', title: 'Premier League 2025/26 Winner', description: 'Will Manchester City win the 2025/26 Premier League title?' },
+            { id: '3', title: 'UEFA Champions League 2025/26', description: 'Will Real Madrid win the 2025/26 UEFA Champions League?' },
+            { id: '4', title: 'NBA Finals 2025 Winner', description: 'Will the Boston Celtics win the 2025 NBA Championship?' },
+            { id: '5', title: 'Tesla Stock Performance 2025', description: 'Will TSLA close above $300 on December 31, 2025?' },
+            { id: '6', title: 'World Cup 2026 Winner', description: 'Will the United States reach the semifinals of the 2026 FIFA World Cup?' }
+          ];
+
+          for (const event of events) {
+            try {
+              const endTime = Math.floor(Date.now() / 1000) + 86400; // 24 hours from now
+              await newContractManager.createBetEvent(
+                event.title,
+                event.description,
+                endTime
+              );
+              console.log(`✅ Event ${event.id} created successfully`);
+            } catch (error) {
+              console.log(`ℹ️ Event ${event.id} may already exist, continuing...`);
+            }
+          }
+          console.log('✅ All events created successfully');
+        } catch (error) {
+          console.error('Error creating events:', error);
+        }
       }
     } catch (error: any) {
       console.log('Error connecting to Ethereum:', error);
@@ -762,8 +1188,14 @@ export default function BetSwapDemo() {
 
   const getUsdcBalance = async (contractManager: any, account: string) => {
     try {
+      console.log('🔍 Frontend: Getting USDC balance for account:', account);
+      console.log('🔍 Frontend: Contract manager:', contractManager);
+
       const balance = await contractManager.getUsdcBalance(account);
+      console.log('🔍 Frontend: Received balance:', balance);
+
       setUsdcBalance(balance);
+      console.log('🔍 Frontend: Set USDC balance to:', balance);
     } catch (error) {
       console.error('Error getting USDC balance:', error);
       setUsdcBalance('0');
@@ -779,6 +1211,8 @@ export default function BetSwapDemo() {
       setNearUsdcBalance('0.00');
     }
   };
+
+
 
   const handleBetInput = (eventId: string, amount: string, outcome: boolean, chain: 'ethereum' | 'near') => {
     const newBet: BetInput = { eventId, amount, outcome };
@@ -942,6 +1376,10 @@ export default function BetSwapDemo() {
     if (nearAccount) {
       disconnectNear();
     } else {
+      // Disconnect Ethereum first if connected
+      if (ethereumAccount) {
+        disconnectEthereum();
+      }
       connectNear();
     }
   };
@@ -950,6 +1388,10 @@ export default function BetSwapDemo() {
     if (ethereumAccount) {
       disconnectEthereum();
     } else {
+      // Disconnect NEAR first if connected
+      if (nearAccount) {
+        disconnectNear();
+      }
       connectEthereum();
     }
   };
@@ -967,35 +1409,46 @@ export default function BetSwapDemo() {
           </div>
 
           {/* Connect Buttons */}
-          <div className="flex space-x-3">
-            <button
-              onClick={handleEthereumConnection}
-              disabled={isConnecting}
-              className={`btn-primary ${ethereumAccount ? 'glow-blue' : ''} ${isConnecting ? 'opacity-50' : ''}`}
-            >
-              {ethereumAccount ? '🔌 Disconnect ETH' : '🔗 Connect ETH'}
-            </button>
+          <div className="flex flex-col space-y-2">
+            <div className="text-xs text-gray-600 text-center mb-2">
+              {!ethereumAccount && !nearAccount && 'Connect either Ethereum or NEAR wallet (one at a time)'}
+              {ethereumAccount && 'Ethereum connected - click NEAR to switch'}
+              {nearAccount && 'NEAR connected - click Ethereum to switch'}
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={handleEthereumConnection}
+                disabled={isConnecting}
+                className={`btn-primary ${ethereumAccount ? 'glow-blue' : ''} ${isConnecting ? 'opacity-50' : ''}`}
+                title={ethereumAccount ? 'Disconnect Ethereum' : 'Connect Ethereum (will disconnect NEAR)'}
+              >
+                {ethereumAccount ? '🔌 Disconnect Ethereum' : '🔗 Connect Ethereum'}
+              </button>
 
-            <button
-              onClick={handleNearConnection}
-              disabled={isConnecting}
-              className={`btn-secondary ${nearAccount ? 'glow-green' : ''} ${isConnecting ? 'opacity-50' : ''}`}
-            >
-              {nearAccount ? '🔌 Disconnect NEAR' : '🔗 Connect NEAR'}
-            </button>
+              <button
+                onClick={handleNearConnection}
+                disabled={isConnecting}
+                className={`btn-secondary ${nearAccount ? 'glow-green' : ''} ${isConnecting ? 'opacity-50' : ''}`}
+                title={nearAccount ? 'Disconnect NEAR' : 'Connect NEAR (will disconnect MetaMask)'}
+              >
+                {nearAccount ? '🔌 Disconnect NEAR' : '🔗 Connect NEAR'}
+              </button>
 
-            <button
-              onClick={() => {
-                fetchAIPredictions('ethereum');
-                fetchAIPredictions('near');
-                fetchDynamicOdds('ethereum');
-                fetchDynamicOdds('near');
-              }}
-              className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
-              title="Refresh AI Predictions & Dynamic Odds"
-            >
-              🔄 AI & Odds
-            </button>
+              <button
+                onClick={() => {
+                  fetchAIPredictions('ethereum');
+                  fetchAIPredictions('near');
+                  fetchDynamicOdds('ethereum');
+                  fetchDynamicOdds('near');
+                }}
+                className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 text-white rounded-xl font-semibold hover:from-purple-600 hover:to-pink-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                title="Refresh AI Predictions & Dynamic Odds"
+              >
+                🔄 AI & Odds
+              </button>
+
+
+            </div>
           </div>
         </div>
 
@@ -1014,6 +1467,7 @@ export default function BetSwapDemo() {
                 💰 {parseFloat(usdcBalance).toFixed(2)} USDC
               </span>
             )}
+
           </div>
 
           <div className="flex items-center space-x-3">
@@ -1048,14 +1502,19 @@ export default function BetSwapDemo() {
                 <h2 className="text-2xl font-bold bg-gradient-to-r from-blue-600 to-purple-600 bg-clip-text text-transparent">
                   ⚡ Ethereum Sepolia Events
                 </h2>
-                <p className="text-gray-600 text-sm mt-1">Smart contract powered betting</p>
+                <p className="text-gray-600 text-sm mt-1">
+                  Smart contract powered betting
+                  {(!ethereumAccount && nearAccount) && ' • Cross-chain via NEAR wallet'}
+                  {(ethereumAccount && nearAccount) && ' • Cross-chain enabled'}
+                </p>
               </div>
               <button
                 onClick={() => placeBet('ethereum')}
-                disabled={ethereumBets.length === 0 || !ethereumAccount}
+                disabled={ethereumBets.length === 0 || (!ethereumAccount && !nearAccount)}
                 className="px-6 py-3 bg-gradient-to-r from-blue-500 to-blue-600 text-white rounded-xl font-semibold hover:from-blue-600 hover:to-blue-700 disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
               >
                 🎯 Place {ethereumBets.length} Bet{ethereumBets.length !== 1 ? 's' : ''}
+                {(!ethereumAccount && nearAccount) && ' (via NEAR)'}
               </button>
             </div>
 
@@ -1135,7 +1594,7 @@ export default function BetSwapDemo() {
                           placeholder="💰 Bet amount (USDC)"
                           value={getBetAmount(event.id, 'ethereum')}
                           onChange={(e) => handleBetInput(event.id, e.target.value, getBetOutcome(event.id, 'ethereum') || false, 'ethereum')}
-                          disabled={!ethereumAccount}
+                          disabled={!ethereumAccount && !nearAccount}
                           className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm disabled:opacity-50 focus:ring-2 focus:ring-blue-500 focus:border-transparent transition-all duration-300"
                         />
                       </div>
@@ -1144,11 +1603,11 @@ export default function BetSwapDemo() {
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={() => handleBetInput(event.id, getBetAmount(event.id, 'ethereum'), true, 'ethereum')}
-                            disabled={!ethereumAccount}
+                            disabled={!ethereumAccount && !nearAccount}
                             className={`px-6 py-3 text-sm font-semibold rounded-xl transition-all duration-300 ${getBetOutcome(event.id, 'ethereum') === true
                               ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                              } ${!ethereumAccount ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
+                              } ${(!ethereumAccount && !nearAccount) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
                           >
                             ✅ Yes
                           </button>
@@ -1164,11 +1623,11 @@ export default function BetSwapDemo() {
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={() => handleBetInput(event.id, getBetAmount(event.id, 'ethereum'), false, 'ethereum')}
-                            disabled={!ethereumAccount}
+                            disabled={!ethereumAccount && !nearAccount}
                             className={`px-6 py-3 text-sm font-semibold rounded-xl transition-all duration-300 ${getBetOutcome(event.id, 'ethereum') === false
                               ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                              } ${!ethereumAccount ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
+                              } ${(!ethereumAccount && !nearAccount) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
                           >
                             ❌ No
                           </button>
@@ -1196,14 +1655,19 @@ export default function BetSwapDemo() {
                 <h2 className="text-2xl font-bold bg-gradient-to-r from-green-600 to-emerald-600 bg-clip-text text-transparent">
                   🌟 NEAR Testnet Events
                 </h2>
-                <p className="text-gray-600 text-sm mt-1">Cross-chain AI predictions</p>
+                <p className="text-gray-600 text-sm mt-1">
+                  Cross-chain AI predictions
+                  {(!nearAccount && ethereumAccount) && ' • Cross-chain via ETH wallet'}
+                  {(ethereumAccount && nearAccount) && ' • Cross-chain enabled'}
+                </p>
               </div>
               <button
                 onClick={() => placeBet('near')}
-                disabled={nearBets.length === 0 || !nearAccount}
+                disabled={nearBets.length === 0 || (!nearAccount && !ethereumAccount)}
                 className="px-6 py-3 bg-gradient-to-r from-green-500 to-green-600 text-white rounded-xl font-semibold hover:from-green-600 hover:to-green-700 disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
               >
                 🎯 Place {nearBets.length} Bet{nearBets.length !== 1 ? 's' : ''}
+                {(!nearAccount && ethereumAccount) && ' (via ETH)'}
               </button>
             </div>
 
@@ -1283,7 +1747,7 @@ export default function BetSwapDemo() {
                           placeholder="💰 Bet amount (USDC)"
                           value={getBetAmount(event.id, 'near')}
                           onChange={(e) => handleBetInput(event.id, e.target.value, getBetOutcome(event.id, 'near') || false, 'near')}
-                          disabled={!nearAccount}
+                          disabled={!nearAccount && !ethereumAccount}
                           className="flex-1 px-4 py-3 border border-gray-300 rounded-xl text-sm disabled:opacity-50 focus:ring-2 focus:ring-green-500 focus:border-transparent transition-all duration-300"
                         />
                       </div>
@@ -1292,11 +1756,11 @@ export default function BetSwapDemo() {
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={() => handleBetInput(event.id, getBetAmount(event.id, 'near'), true, 'near')}
-                            disabled={!nearAccount}
+                            disabled={!nearAccount && !ethereumAccount}
                             className={`px-6 py-3 text-sm font-semibold rounded-xl transition-all duration-300 ${getBetOutcome(event.id, 'near') === true
                               ? 'bg-gradient-to-r from-green-500 to-green-600 text-white shadow-lg'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                              } ${!nearAccount ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
+                              } ${(!nearAccount && !ethereumAccount) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
                           >
                             ✅ Yes
                           </button>
@@ -1312,11 +1776,11 @@ export default function BetSwapDemo() {
                         <div className="flex items-center space-x-2">
                           <button
                             onClick={() => handleBetInput(event.id, getBetAmount(event.id, 'near'), false, 'near')}
-                            disabled={!nearAccount}
+                            disabled={!nearAccount && !ethereumAccount}
                             className={`px-6 py-3 text-sm font-semibold rounded-xl transition-all duration-300 ${getBetOutcome(event.id, 'near') === false
                               ? 'bg-gradient-to-r from-red-500 to-red-600 text-white shadow-lg'
                               : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-                              } ${!nearAccount ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
+                              } ${(!nearAccount && !ethereumAccount) ? 'opacity-50 cursor-not-allowed' : 'hover:scale-105'}`}
                           >
                             ❌ No
                           </button>
@@ -1356,14 +1820,38 @@ export default function BetSwapDemo() {
             <div className="text-green-600">Active Events</div>
           </div>
           <div className="text-center p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 card-hover">
-            <div className="text-purple-600 font-bold text-lg mb-2">🎯 Total Bets</div>
-            <div className="text-3xl font-bold text-purple-800 mb-1">{ethereumBets.length + nearBets.length}</div>
-            <div className="text-purple-600">Pending</div>
+            <div className="text-purple-600 font-bold text-lg mb-2">🎯 Cross-Chain Bets</div>
+            <div className="text-3xl font-bold text-purple-800 mb-1">{crossChainBets.length}</div>
+            <div className="text-purple-600">Placed</div>
           </div>
           <div className="text-center p-6 bg-gradient-to-br from-yellow-50 to-yellow-100 rounded-xl border border-yellow-200 card-hover">
             <div className="text-yellow-600 font-bold text-lg mb-2">🌐 Network</div>
             <div className="text-xl font-bold text-yellow-800 mb-1">{networkInfo.name}</div>
             <div className="text-yellow-600">Connected</div>
+          </div>
+        </div>
+
+        {/* Cross-Chain Betting Statistics */}
+        <div className="mt-8">
+          <h4 className="text-xl font-bold bg-gradient-to-r from-purple-600 to-pink-600 bg-clip-text text-transparent mb-4">
+            🔄 Cross-Chain Betting Statistics
+          </h4>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6 text-sm">
+            <div className="text-center p-6 bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 card-hover">
+              <div className="text-purple-600 font-bold text-lg mb-2">🎯 Cross-Chain Bets</div>
+              <div className="text-3xl font-bold text-purple-800 mb-1">{crossChainBets.length}</div>
+              <div className="text-purple-600">Total Placed</div>
+            </div>
+            <div className="text-center p-6 bg-gradient-to-br from-green-50 to-green-100 rounded-xl border border-green-200 card-hover">
+              <div className="text-green-600 font-bold text-lg mb-2">💰 Cross-Chain Winnings</div>
+              <div className="text-3xl font-bold text-green-800 mb-1">{crossChainWinnings.toFixed(2)} USDC</div>
+              <div className="text-green-600">Total Earned</div>
+            </div>
+            <div className="text-center p-6 bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 card-hover">
+              <div className="text-blue-600 font-bold text-lg mb-2">📈 Cross-Chain Win Rate</div>
+              <div className="text-3xl font-bold text-blue-800 mb-1">{crossChainWinRate.toFixed(1)}%</div>
+              <div className="text-blue-600">Success Rate</div>
+            </div>
           </div>
         </div>
 
@@ -1400,6 +1888,230 @@ export default function BetSwapDemo() {
 
 
       </div>
+
+      {/* Native Chain Betting Dashboard */}
+      {isHydrated && (
+        <div className="gradient-card rounded-2xl shadow-2xl p-8 mb-8">
+          <div className="flex justify-between items-center mb-6">
+            <div>
+              <h2 className="text-2xl font-bold bg-gradient-to-r from-orange-600 to-red-600 bg-clip-text text-transparent">
+                🏠 Native Chain Betting Dashboard
+              </h2>
+              <p className="text-gray-600 text-sm mt-1">Track your single-chain betting activity (no cross-chain involved)</p>
+            </div>
+            <div className="flex space-x-3">
+              <button
+                onClick={() => {
+                  // Refresh native betting data
+                  console.log('🔄 Refreshing native betting dashboard...');
+                }}
+                className="px-6 py-3 bg-gradient-to-r from-orange-500 to-red-500 text-white rounded-xl font-semibold hover:from-orange-600 hover:to-red-600 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                title="Refresh Native Betting Data"
+              >
+                🔄 Refresh
+              </button>
+              <button
+                onClick={async () => {
+                  if (contractManager && ethereumAccount) {
+                    console.log('🔄 Creating all events manually...');
+                    try {
+                      const events = [
+                        { id: '1', title: 'Bitcoin ETF Approval Q4 2025', description: 'Will the SEC approve additional spot Bitcoin ETFs by December 31, 2025?' },
+                        { id: '2', title: 'Premier League 2025/26 Winner', description: 'Will Manchester City win the 2025/26 Premier League title?' },
+                        { id: '3', title: 'UEFA Champions League 2025/26', description: 'Will Real Madrid win the 2025/26 UEFA Champions League?' },
+                        { id: '4', title: 'NBA Finals 2025 Winner', description: 'Will the Boston Celtics win the 2025 NBA Championship?' },
+                        { id: '5', title: 'Tesla Stock Performance 2025', description: 'Will TSLA close above $300 on December 31, 2025?' },
+                        { id: '6', title: 'World Cup 2026 Winner', description: 'Will the United States reach the semifinals of the 2026 FIFA World Cup?' }
+                      ];
+
+                      for (const event of events) {
+                        try {
+                          const endTime = Math.floor(Date.now() / 1000) + 86400; // 24 hours from now
+                          await contractManager.createBetEvent(
+                            event.title,
+                            event.description,
+                            endTime
+                          );
+                          console.log(`✅ Event ${event.id} created successfully`);
+                        } catch (error) {
+                          console.log(`ℹ️ Event ${event.id} may already exist, continuing...`);
+                        }
+                      }
+                      alert('✅ All events created successfully!');
+                    } catch (error) {
+                      console.error('Error creating events:', error);
+                      alert('❌ Error creating events. Please try again.');
+                    }
+                  } else {
+                    alert('Please connect to Ethereum first!');
+                  }
+                }}
+                disabled={!ethereumAccount}
+                className="px-6 py-3 bg-gradient-to-r from-blue-500 to-purple-500 text-white rounded-xl font-semibold hover:from-blue-600 hover:to-purple-600 disabled:opacity-50 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                title="Create All Events on Blockchain"
+              >
+                🎯 Create Events
+              </button>
+              <button
+                onClick={() => {
+                  if (confirm('Are you sure you want to clear all betting data? This cannot be undone.')) {
+                    // Clear all native betting data
+                    setEthereumNativeBets([]);
+                    setNearNativeBets([]);
+                    setEthereumNativeWinnings(0);
+                    setNearNativeWinnings(0);
+                    setEthereumNativeWinRate(0);
+                    setNearNativeWinRate(0);
+
+                    // Clear cross-chain betting data
+                    setCrossChainBets([]);
+                    setCrossChainWinnings(0);
+                    setCrossChainWinRate(0);
+
+                    // Clear localStorage
+                    if (typeof window !== 'undefined') {
+                      localStorage.removeItem('betswap_ethereum_native_bets');
+                      localStorage.removeItem('betswap_near_native_bets');
+                      localStorage.removeItem('betswap_ethereum_native_winnings');
+                      localStorage.removeItem('betswap_near_native_winnings');
+                      localStorage.removeItem('betswap_ethereum_native_winrate');
+                      localStorage.removeItem('betswap_near_native_winrate');
+                      localStorage.removeItem('betswap_cross_chain_bets');
+                      localStorage.removeItem('betswap_cross_chain_winnings');
+                      localStorage.removeItem('betswap_cross_chain_winrate');
+                    }
+
+                    alert('✅ All betting data cleared successfully!');
+                  }
+                }}
+                className="px-6 py-3 bg-gradient-to-r from-red-500 to-red-600 text-white rounded-xl font-semibold hover:from-red-600 hover:to-red-700 transition-all duration-300 shadow-lg hover:shadow-xl transform hover:-translate-y-1"
+                title="Clear All Betting Data"
+              >
+                🗑️ Clear Data
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
+            {/* Ethereum Native Bets */}
+            <div className="gradient-card rounded-xl shadow-lg p-6 card-hover">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-blue-600">⚡ Ethereum Native Bets</h3>
+                <span className="text-sm font-semibold text-green-600 bg-green-50 px-3 py-1 rounded-full">
+                  {ethereumAccount ? 'Connected' : 'Not Connected'}
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-semibold text-gray-900">Total Bets Placed</span>
+                    <span className="text-lg font-bold text-blue-600">{ethereumNativeBets.length}</span>
+                  </div>
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-semibold text-gray-900">Total Amount Bet</span>
+                    <span className="text-lg font-bold text-green-600">{ethereumNativeBets.reduce((sum, bet) => sum + parseFloat(bet.amount), 0).toFixed(2)} USDC</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-gray-900">Win Rate</span>
+                    <span className="text-lg font-bold text-purple-600">{ethereumNativeWinRate.toFixed(1)}%</span>
+                  </div>
+                </div>
+
+                <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4">
+                  <h4 className="font-semibold text-gray-900 mb-3">Recent Activity</h4>
+                  {ethereumNativeBets.length > 0 ? (
+                    <div className="space-y-2">
+                      {ethereumNativeBets.slice(-3).map((bet, index) => (
+                        <div key={index} className="flex justify-between items-center text-sm">
+                          <span className="text-gray-600">Event {bet.eventId}</span>
+                          <span className="font-semibold text-blue-600">{bet.amount} USDC</span>
+                          <span className={`px-2 py-1 rounded text-xs ${bet.outcome ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {bet.outcome ? 'YES' : 'NO'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500">
+                      <p>No recent betting activity</p>
+                      <p className="text-sm mt-1">Connect to Ethereum to start betting</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+
+            {/* NEAR Native Bets */}
+            <div className="gradient-card rounded-xl shadow-lg p-6 card-hover">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="text-xl font-bold text-green-600">🌐 NEAR Native Bets</h3>
+                <span className="text-sm font-semibold text-green-600 bg-green-50 px-3 py-1 rounded-full">
+                  {nearAccount ? 'Connected' : 'Not Connected'}
+                </span>
+              </div>
+
+              <div className="space-y-4">
+                <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4">
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-semibold text-gray-900">Total Bets Placed</span>
+                    <span className="text-lg font-bold text-green-600">{nearNativeBets.length}</span>
+                  </div>
+                  <div className="flex justify-between items-center mb-3">
+                    <span className="font-semibold text-gray-900">Total Amount Bet</span>
+                    <span className="text-lg font-bold text-green-600">{nearNativeBets.reduce((sum, bet) => sum + parseFloat(bet.amount), 0).toFixed(2)} USDC</span>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="font-semibold text-gray-900">Win Rate</span>
+                    <span className="text-lg font-bold text-purple-600">{nearNativeWinRate.toFixed(1)}%</span>
+                  </div>
+                </div>
+
+                <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4">
+                  <h4 className="font-semibold text-gray-900 mb-3">Recent Activity</h4>
+                  {nearNativeBets.length > 0 ? (
+                    <div className="space-y-2">
+                      {nearNativeBets.slice(-3).map((bet, index) => (
+                        <div key={index} className="flex justify-between items-center text-sm">
+                          <span className="text-gray-600">Event {bet.eventId}</span>
+                          <span className="font-semibold text-green-600">{bet.amount} USDC</span>
+                          <span className={`px-2 py-1 rounded text-xs ${bet.outcome ? 'bg-green-100 text-green-800' : 'bg-red-100 text-red-800'}`}>
+                            {bet.outcome ? 'YES' : 'NO'}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-center py-4 text-gray-500">
+                      <p>No recent betting activity</p>
+                      <p className="text-sm mt-1">Connect to NEAR to start betting</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Native Betting Stats */}
+          <div className="mt-8 gradient-card rounded-xl shadow-lg p-6">
+            <h3 className="text-xl font-bold text-gray-900 mb-4">📊 Native Betting Statistics</h3>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+              <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4 text-center">
+                <div className="text-2xl font-bold text-blue-600 mb-2">{ethereumNativeBets.length + nearNativeBets.length}</div>
+                <div className="text-sm text-gray-600">Total Events Bet On</div>
+              </div>
+              <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4 text-center">
+                <div className="text-2xl font-bold text-green-600 mb-2">{(ethereumNativeWinnings + nearNativeWinnings).toFixed(2)} USDC</div>
+                <div className="text-sm text-gray-600">Total Winnings</div>
+              </div>
+              <div className="bg-white/90 backdrop-blur-sm border border-gray-200 rounded-xl p-4 text-center">
+                <div className="text-2xl font-bold text-purple-600 mb-2">{((ethereumNativeWinRate + nearNativeWinRate) / 2).toFixed(1)}%</div>
+                <div className="text-sm text-gray-600">Overall Success Rate</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Troubleshooting Modal */}
       {

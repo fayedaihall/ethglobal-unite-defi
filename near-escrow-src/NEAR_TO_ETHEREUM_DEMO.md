@@ -106,7 +106,7 @@ function _initiateCrossChainSwap(
     htlcContract.createLock(
         escrowId,
         msg.sender,
-        address(betToken),
+        address(usdc),
         amount,
         hashlock,
         timelock
