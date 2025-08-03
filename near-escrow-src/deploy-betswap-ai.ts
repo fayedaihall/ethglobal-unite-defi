@@ -46,6 +46,10 @@ async function main() {
   console.log(`   Dutch Auction: ${dutchAuctionAddress}`);
   console.log(`   Shade Agent Solver: ${solverAddress}`);
 
+  // Get current nonce
+  const nonce = await provider.getTransactionCount(wallet.address);
+  console.log(`📊 Starting nonce: ${nonce}`);
+
   // Deploy BetToken
   console.log("\n📦 Deploying BetToken...");
   const betTokenArtifactPath = path.join(
@@ -76,7 +80,14 @@ async function main() {
 
   console.log(`✅ BetToken deployed to: ${betTokenAddress}`);
 
-  // Deploy BetSwapAI
+  // Wait for transaction to be mined and get new nonce
+  console.log("⏳ Waiting for BetToken deployment to be mined...");
+  await new Promise((resolve) => setTimeout(resolve, 2000));
+
+  const newNonce = await provider.getTransactionCount(wallet.address);
+  console.log(`📊 New nonce after BetToken: ${newNonce}`);
+
+  // Deploy BetSwapAI with explicit nonce
   console.log("\n📦 Deploying BetSwapAI...");
   const betSwapAIArtifactPath = path.join(
     __dirname,
@@ -100,11 +111,13 @@ async function main() {
     wallet
   );
 
+  // Deploy with explicit nonce
   const betSwapAI = await BetSwapAIFactory.deploy(
     betTokenAddress,
     htlcAddress,
     dutchAuctionAddress,
-    solverAddress
+    solverAddress,
+    { nonce: newNonce }
   );
   await betSwapAI.waitForDeployment();
   const betSwapAIAddress = await betSwapAI.getAddress();

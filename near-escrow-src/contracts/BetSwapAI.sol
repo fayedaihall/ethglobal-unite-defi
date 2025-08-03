@@ -129,7 +129,10 @@ contract BetSwapAI {
         bytes32 escrowId = keccak256(abi.encodePacked(betId, "cross_chain"));
         string memory secret = _generateSecret();
         bytes32 hashlock = keccak256(abi.encodePacked(secret));
-        uint256 timelock = block.timestamp + 7200; // 2 hours
+        uint256 timelock = 7200; // 2 hours
+        
+        // Approve HTLC contract to spend tokens
+        betToken.approve(address(htlcContract), amount);
         
         // Create HTLC lock
         htlcContract.createLock(

@@ -1,0 +1,40 @@
+export const NETWORKS = {
+  ethereum: {
+    sepolia: {
+      chainId: "0xaa36a7",
+      chainName: "Sepolia Testnet",
+      nativeCurrency: {
+        name: "Sepolia Ether",
+        symbol: "SEP",
+        decimals: 18,
+      },
+      rpcUrls: ["https://rpc.sepolia.org"],
+      blockExplorerUrls: ["https://sepolia.etherscan.io"],
+      contracts: {
+        betSwapAI: "0xe7f1725E7734CE288F8367e1Bb143E90bb3F0512",
+        betToken: "0x5FbDB2315678afecb367f032d93F642f64180aa3",
+        htlc: "0x4A679253410272dd5232B3Ff7cF5dbB88f295319",
+      },
+    },
+  },
+  near: {
+    testnet: {
+      networkId: "testnet",
+      nodeUrl: "https://rpc.testnet.near.org",
+      walletUrl: "https://wallet.testnet.near.org",
+      helperUrl: "https://helper.testnet.near.org",
+      explorerUrl: "https://explorer.testnet.near.org",
+    },
+  },
+};
+
+export const getContractAddress = (
+  contract: string,
+  network: string = "sepolia"
+) => {
+  return (NETWORKS.ethereum as any)[network]?.contracts[contract] || "";
+};
+
+export const getNetworkConfig = (network: string = "sepolia") => {
+  return (NETWORKS.ethereum as any)[network] || null;
+};

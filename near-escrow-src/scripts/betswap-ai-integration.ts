@@ -2,6 +2,7 @@ import { ethers } from "ethers";
 import * as nearAPI from "near-api-js";
 import * as dotenv from "dotenv";
 import * as crypto from "crypto";
+import { OracleIntegration } from "../oracle-integration.ts";
 
 // Load environment variables
 const envFile =
@@ -44,6 +45,7 @@ class BetSwapAIIntegration {
   private dutchAuctionContract: ethers.Contract;
   private solverContract: ethers.Contract;
   private nearAccount: any;
+  private currentNonce: number | null = null;
 
   constructor() {
     this.provider = new ethers.JsonRpcProvider(process.env.ETH_RPC);
@@ -137,6 +139,16 @@ class BetSwapAIIntegration {
     this.setupNearAccount();
   }
 
+  private async getNextNonce(): Promise<number> {
+    if (this.currentNonce === null) {
+      this.currentNonce = await this.provider.getTransactionCount(
+        this.wallet.address,
+        "latest"
+      );
+    }
+    return this.currentNonce++;
+  }
+
   private async setupNearAccount() {
     const { keyStores, Near, KeyPair } = nearAPI;
     const keyStore = new keyStores.InMemoryKeyStore();
@@ -174,13 +186,23 @@ class BetSwapAIIntegration {
     console.log(`🎯 Creating betting event: ${description}`);
 
     try {
+      // Get current nonce
+      const nonce = await this.provider.getTransactionCount(
+        this.wallet.address,
+        "latest"
+      );
+
       const eventIdBytes = ethers.keccak256(ethers.toUtf8Bytes(eventId));
       const tx = await this.betSwapAIContract.createBetEvent(
         eventIdBytes,
         description,
-        endTime
+        endTime,
+        { nonce }
       );
       await tx.wait();
+
+      // Reset nonce tracking after transaction completion
+      this.currentNonce = null;
 
       console.log(`✅ Betting event created successfully!`);
       console.log(`   Event ID: ${eventId}`);
@@ -212,10 +234,17 @@ class BetSwapAIIntegration {
         throw new Error("Insufficient BET token balance");
       }
 
+      // Get current nonce for sequential transactions
+      let nonce = await this.provider.getTransactionCount(
+        this.wallet.address,
+        "latest"
+      );
+
       // Approve tokens
       const approveTx = await this.betTokenContract.approve(
         await this.betSwapAIContract.getAddress(),
-        amount
+        amount,
+        { nonce: nonce++ }
       );
       await approveTx.wait();
       console.log(`✅ Token approval confirmed`);
@@ -225,7 +254,8 @@ class BetSwapAIIntegration {
       const tx = await this.betSwapAIContract.placeBet(
         eventIdBytes,
         amount,
-        outcome
+        outcome,
+        { nonce: nonce++ }
       );
       await tx.wait();
 
@@ -239,14 +269,16 @@ class BetSwapAIIntegration {
     }
   }
 
-  // Place a cross-chain bet
-  async placeCrossChainBet(
+  // Place a simplified cross-chain bet (without HTLC for now)
+  async placeSimplifiedCrossChainBet(
     eventId: string,
     amount: string,
     outcome: boolean,
     nearAccountId: string
   ): Promise<string> {
-    console.log(`🌉 Placing cross-chain bet: ${eventId} -> ${nearAccountId}`);
+    console.log(
+      `🌉 Placing simplified cross-chain bet: ${eventId} -> ${nearAccountId}`
+    );
 
     try {
       // Check token balance
@@ -257,71 +289,108 @@ class BetSwapAIIntegration {
         throw new Error("Insufficient BET token balance");
       }
 
+      // Get current nonce
+      let nonce = await this.provider.getTransactionCount(
+        this.wallet.address,
+        "latest"
+      );
+
       // Approve tokens
       const approveTx = await this.betTokenContract.approve(
         await this.betSwapAIContract.getAddress(),
-        amount
+        amount,
+        { nonce: nonce++ }
       );
       await approveTx.wait();
 
-      // Place cross-chain bet
+      // Place regular bet (simulating cross-chain)
       const eventIdBytes = ethers.keccak256(ethers.toUtf8Bytes(eventId));
-      const tx = await this.betSwapAIContract.placeCrossChainBet(
+      const tx = await this.betSwapAIContract.placeBet(
         eventIdBytes,
         amount,
         outcome,
-        nearAccountId
+        { nonce: nonce++ }
       );
       await tx.wait();
-
-      // Get bet ID from event
-      const receipt = await this.provider.getTransactionReceipt(tx.hash);
-      const betId = receipt?.logs?.[0]?.topics?.[1] || "unknown";
-
-      console.log(`✅ Cross-chain bet placed successfully!`);
-      console.log(`   Bet ID: ${betId}`);
+      console.log(`✅ Simplified cross-chain bet placed successfully!`);
       console.log(`   Amount: ${amount} BET tokens`);
       console.log(`   NEAR Account: ${nearAccountId}`);
       console.log(`   Transaction: ${tx.hash}`);
+      console.log(
+        `   Note: This is a regular bet simulating cross-chain functionality`
+      );
 
-      return betId;
+      return tx.hash;
     } catch (error: any) {
-      console.error("❌ Failed to place cross-chain bet:", error.message);
+      console.error(
+        "❌ Failed to place simplified cross-chain bet:",
+        error.message
+      );
       throw error;
     }
   }
 
-  // Resolve bet with AI prediction
+  // Resolve bet with AI using real oracle data
   async resolveBetWithAI(
     eventId: string,
-    oracleData: string
+    eventType: string = "sports",
+    oracleService: string = "chainlink"
   ): Promise<AIPredictionData> {
-    console.log(`🤖 Resolving bet with AI: ${eventId}`);
+    console.log(
+      `🤖 Resolving bet with AI using ${oracleService} oracle: ${eventId}`
+    );
 
     try {
-      // Simulate AI analysis
-      const predictedOutcome = this._analyzeOracleData(oracleData);
-      const confidence = this._calculateConfidence(oracleData);
+      // Initialize oracle integration
+      const oracle = new OracleIntegration(oracleService);
 
+      // Get real oracle data based on event type
+      let oracleData: any; // Changed from OracleData to any as OracleData is no longer imported
+
+      switch (eventType) {
+        case "sports":
+          oracleData = await oracle.getSportsData(eventId);
+          break;
+        case "crypto":
+          oracleData = await oracle.getCryptoData(eventId);
+          break;
+        case "weather":
+          oracleData = await oracle.getWeatherData(eventId);
+          break;
+        default:
+          throw new Error(`Unsupported event type: ${eventType}`);
+      }
+
+      // Analyze oracle data with AI
+      const aiAnalysis = await oracle.analyzeWithAI(oracleData, eventType);
+
+      console.log(`📊 Oracle Data from ${oracleData.source}:`);
+      console.log(`   Data: ${JSON.stringify(oracleData.data, null, 2)}`);
+      console.log(`   AI Analysis: ${aiAnalysis.reasoning}`);
+      console.log(`   Predicted Outcome: ${aiAnalysis.outcome ? "Yes" : "No"}`);
+      console.log(`   Confidence: ${aiAnalysis.confidence}%`);
+
+      // Call smart contract with AI prediction
       const eventIdBytes = ethers.keccak256(ethers.toUtf8Bytes(eventId));
       const tx = await this.betSwapAIContract.resolveBetWithAI(
         eventIdBytes,
-        predictedOutcome,
-        confidence
+        aiAnalysis.outcome,
+        aiAnalysis.confidence
       );
       await tx.wait();
 
-      console.log(`✅ Bet resolved with AI!`);
-      console.log(`   Predicted Outcome: ${predictedOutcome ? "Yes" : "No"}`);
-      console.log(`   Confidence: ${confidence}%`);
-      console.log(`   Oracle Data: ${oracleData}`);
+      console.log(`✅ Bet resolved with AI using real oracle!`);
+      console.log(`   Oracle Source: ${oracleData.source}`);
+      console.log(`   Predicted Outcome: ${aiAnalysis.outcome ? "Yes" : "No"}`);
+      console.log(`   Confidence: ${aiAnalysis.confidence}%`);
+      console.log(`   Reasoning: ${aiAnalysis.reasoning}`);
       console.log(`   Transaction: ${tx.hash}`);
 
       return {
         eventId,
-        predictedOutcome,
-        confidence,
-        oracleData,
+        predictedOutcome: aiAnalysis.outcome,
+        confidence: aiAnalysis.confidence,
+        oracleData: JSON.stringify(oracleData.data),
         timestamp: Math.floor(Date.now() / 1000),
       };
     } catch (error: any) {
@@ -405,37 +474,66 @@ class BetSwapAIIntegration {
     }
   }
 
+  // Helper function to add delay between transactions
+  private async delay(ms: number): Promise<void> {
+    return new Promise((resolve) => setTimeout(resolve, ms));
+  }
+
   // Demonstrate complete BetSwap AI workflow
   async demonstrateBetSwapAIWorkflow(): Promise<void> {
     console.log("🎯 Demonstrating BetSwap AI Complete Workflow...\n");
 
     // Step 1: Create betting event
-    const eventId = "world_cup_final_2024";
-    const description = "Will Team A win the World Cup Final 2024?";
+    const eventId = "ethereum_reach_10000_December_2025";
+    const description = "Will Ethereum reach 10,000 by December 2025?";
     const endTime = Math.floor(Date.now() / 1000) + 86400; // 24 hours from now
 
     await this.createBetEvent(eventId, description, endTime);
 
+    // Add delay to ensure nonce synchronization
+    console.log("⏳ Waiting for transaction confirmation...");
+    await this.delay(2000);
+
     // Step 2: Place bets
     const betAmount = "1000000"; // 1M BET tokens
     await this.placeBet(eventId, betAmount, true); // Bet on "Yes"
+
+    console.log("⏳ Waiting for transaction confirmation...");
+    await this.delay(2000);
+
     await this.placeBet(eventId, "500000", false); // Bet on "No"
 
+    console.log("⏳ Waiting for transaction confirmation...");
+    await this.delay(2000);
+
     // Step 3: Place cross-chain bet
-    const crossChainBetId = await this.placeCrossChainBet(
+    const crossChainBetId = await this.placeSimplifiedCrossChainBet(
       eventId,
       "2000000",
       true,
       "fayefaye2.testnet"
     );
 
+    console.log("⏳ Waiting for transaction confirmation...");
+    await this.delay(2000);
+
     // Step 4: Resolve with AI
     const oracleData =
       "Team A has 65% win probability based on recent performance";
-    const aiPrediction = await this.resolveBetWithAI(eventId, oracleData);
+    const aiPrediction = await this.resolveBetWithAI(
+      eventId,
+      "sports",
+      "chainlink"
+    );
+
+    console.log("⏳ Waiting for transaction confirmation...");
+    await this.delay(2000);
 
     // Step 5: Claim rewards
     await this.claimRewards();
+
+    console.log("⏳ Waiting for transaction confirmation...");
+    await this.delay(2000);
 
     // Step 6: Get final information
     const eventInfo = await this.getBetEventInfo(eventId);
@@ -466,7 +564,7 @@ class BetSwapAIIntegration {
   private _calculateConfidence(oracleData: string): number {
     // Simulate confidence calculation
     const hash = crypto.createHash("sha256").update(oracleData).digest();
-    return ((hash[1] as number) * 100) / 255;
+    return Math.floor(((hash[1] as number) * 100) / 255);
   }
 }
 
@@ -534,7 +632,7 @@ async function main() {
           process.exit(1);
         }
 
-        await integration.placeCrossChainBet(
+        await integration.placeSimplifiedCrossChainBet(
           crossEventId,
           crossAmount,
           crossOutcome,
@@ -544,19 +642,34 @@ async function main() {
 
       case "resolve-ai":
         const resolveEventId = process.argv[3];
-        const oracleData = process.argv[4];
+        const eventType = process.argv[4] || "sports";
+        const oracleService = process.argv[5] || "chainlink";
 
-        if (!resolveEventId || !oracleData) {
+        if (!resolveEventId) {
           console.error(
-            "Usage: ts-node scripts/betswap-ai-integration.ts resolve-ai <eventId> <oracleData>"
+            "Usage: ts-node scripts/betswap-ai-integration.ts resolve-ai <eventId> [eventType] [oracleService]"
           );
           console.error(
-            "Example: ts-node scripts/betswap-ai-integration.ts resolve-ai world_cup_final 'Team A has 65% win probability'"
+            "Example: ts-node scripts/betswap-ai-integration.ts resolve-ai world_cup_final sports chainlink"
+          );
+          console.error(
+            "Example: ts-node scripts/betswap-ai-integration.ts resolve-ai bitcoin_price crypto pyth"
+          );
+          console.error(
+            "Example: ts-node scripts/betswap-ai-integration.ts resolve-ai london_weather weather openweather"
+          );
+          console.error("Supported event types: sports, crypto, weather");
+          console.error(
+            "Supported oracle services: chainlink, pyth, sportsradar, openweather, alphavantage"
           );
           process.exit(1);
         }
 
-        await integration.resolveBetWithAI(resolveEventId, oracleData);
+        await integration.resolveBetWithAI(
+          resolveEventId,
+          eventType,
+          oracleService
+        );
         break;
 
       case "claim-rewards":
